@@ -412,3 +412,5 @@ scratch.*
 test.*
 debug.*
 AGENTS.md
+CLAUDE.md
+.claude/
