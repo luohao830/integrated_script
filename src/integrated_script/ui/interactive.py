@@ -48,7 +48,7 @@ class InteractiveInterface:
         self.menu_system = MenuSystem()
 
         # 处理器实例
-        self.processors = {
+        self.processors: Dict[str, Any] = {
             "yolo": None,
             "image": None,
             "file": None,
@@ -146,7 +146,7 @@ class InteractiveInterface:
             )
 
             # 获取项目名称
-            project_name = input("\n请输入处理后的项目名称（留空自动生成）: ").strip()
+            project_name: Optional[str] = input("\n请输入处理后的项目名称（留空自动生成）: ").strip()
             if not project_name:
                 project_name = None
 
@@ -225,7 +225,7 @@ class InteractiveInterface:
             dataset_path = self._get_path_input(
                 "请输入YOLO数据集路径: ", must_exist=True
             )
-            output_path = self._get_input(
+            output_path: Optional[str] = self._get_input(
                 "请输入输出目录（留空自动生成）: ", required=False
             ).strip()
             if not output_path:
@@ -283,7 +283,7 @@ class InteractiveInterface:
             dataset_path = self._get_path_input(
                 "请输入X-label数据集路径: ", must_exist=True
             )
-            output_path = self._get_input(
+            output_path: Optional[str] = self._get_input(
                 "请输入输出目录（留空自动生成）: ", required=False
             ).strip()
             if not output_path:
@@ -398,7 +398,9 @@ class InteractiveInterface:
         }
         return type_names.get(dataset_type, "未知类型")
 
-    def _get_user_confirmed_type(self, detected_type: str, confidence: float) -> str:
+    def _get_user_confirmed_type(
+        self, detected_type: str, confidence: float
+    ) -> Optional[str]:
         """获取用户确认的数据集类型
 
         Args:
@@ -1046,7 +1048,7 @@ class InteractiveInterface:
             print("- 提供详细的合并统计信息")
 
             # 收集数据集路径
-            dataset_paths = []
+            dataset_paths: List[str] = []
             print("\n请输入要合并的数据集路径（至少2个）:")
 
             while True:
@@ -1108,12 +1110,12 @@ class InteractiveInterface:
                     return
 
             # 输出目录名称
-            output_dir = input("输出目录名称（留空自动生成）: ").strip()
+            output_dir: Optional[str] = input("输出目录名称（留空自动生成）: ").strip()
             if not output_dir:
                 output_dir = None
 
             # 图片前缀
-            image_prefix = input("图片前缀（留空使用默认）: ").strip()
+            image_prefix: Optional[str] = input("图片前缀（留空使用默认）: ").strip()
             if not image_prefix:
                 image_prefix = None
 
@@ -1216,7 +1218,7 @@ class InteractiveInterface:
             print("- 提供详细的合并统计信息")
 
             # 收集数据集路径
-            dataset_paths = []
+            dataset_paths: List[str] = []
             print("\n请输入要合并的数据集路径（至少2个）:")
 
             while True:
@@ -1247,10 +1249,10 @@ class InteractiveInterface:
             # 显示数据集类别信息
             processor = self._get_processor("yolo")
             path_objects = [Path(path) for path in dataset_paths]
-            
+
             print("\n=== 数据集类别信息 ===")
             all_classes_info = processor._collect_all_classes_info(path_objects)
-            
+
             for i, info in enumerate(all_classes_info):
                 print(f"数据集 {i+1}: {info['dataset_path'].name}")
                 print(f"  类别数: {len(info['classes'])}")
@@ -1262,15 +1264,15 @@ class InteractiveInterface:
             # 询问是否调整数据集顺序
             adjust_order = input("是否需要调整数据集处理顺序？(y/N): ").strip().lower()
             dataset_order = None
-            
+
             if adjust_order in ["y", "yes", "是"]:
                 print("\n当前数据集顺序:")
                 for i, path in enumerate(dataset_paths):
                     print(f"  {i}: {Path(path).name}")
-                
+
                 print("\n请输入新的处理顺序（用空格分隔的数字，如: 1 0 2）:")
                 order_input = input("新顺序: ").strip()
-                
+
                 try:
                     dataset_order = [int(x) for x in order_input.split()]
                     if len(dataset_order) != len(dataset_paths):
@@ -1323,19 +1325,19 @@ class InteractiveInterface:
                     return
 
             # 输出目录名称
-            output_dir = input("输出目录名称（留空自动生成）: ").strip()
+            output_dir: Optional[str] = input("输出目录名称（留空自动生成）: ").strip()
             if not output_dir:
                 output_dir = None
 
             # 图片前缀
-            image_prefix = input("图片前缀（留空使用默认）: ").strip()
+            image_prefix: Optional[str] = input("图片前缀（留空使用默认）: ").strip()
             if not image_prefix:
                 image_prefix = None
 
             # 预览统一类别映射
             print("\n正在分析类别映射...")
             unified_classes, class_mappings = processor._create_unified_class_mapping(all_classes_info)
-            
+
             print("\n=== 统一类别映射预览 ===")
             print(f"合并后总类别数: {len(unified_classes)}")
             print(f"统一类别列表: {', '.join(unified_classes[:10])}")
@@ -1760,8 +1762,8 @@ class InteractiveInterface:
         self, image_info_list: List[Dict[str, Any]]
     ) -> None:
         """显示分辨率统计和清晰度分析"""
-        resolution_stats = {}
-        quality_stats = {}
+        resolution_stats: Dict[str, int] = {}
+        quality_stats: Dict[str, int] = {}
 
         # 统计分辨率和清晰度
         for info in image_info_list:
@@ -1815,7 +1817,7 @@ class InteractiveInterface:
     def _analyze_image_quality(self, width: int, height: int) -> str:
         """分析图像清晰度级别"""
         try:
-            config = self.config_manager.get_config()
+            config = self.config_manager.get_all()
             quality_config = config.get("image_processing", {}).get(
                 "quality_analysis", {}
             )
@@ -2982,7 +2984,7 @@ class InteractiveInterface:
                             ".yml"
                         ):
                             try:
-                                import yaml
+                                import yaml  # type: ignore[import-untyped]
 
                                 with open(config_path, "r", encoding="utf-8") as f:
                                     yaml.safe_load(f)
@@ -3279,7 +3281,11 @@ image:
             # 测试不同级别的日志输出
             test_logger = self.logger
             print(f"当前日志记录器级别: {test_logger.level}")
-            print(f"根日志记录器级别: {test_logger.parent.level}")
+            parent_logger = test_logger.parent
+            if parent_logger is not None:
+                print(f"根日志记录器级别: {parent_logger.level}")
+            else:
+                print("根日志记录器级别: N/A")
 
             if log_level == "DEBUG":
                 test_logger.debug("🔍 这是DEBUG级别的日志")
@@ -3580,51 +3586,6 @@ image:
 
         self._pause()
 
-    def _get_int_input(
-        self, prompt: str, min_val: int = None, max_val: int = None
-    ) -> int:
-        """获取整数输入"""
-        while True:
-            try:
-                user_input = self._get_input(prompt).strip()
-                if not user_input:
-                    return None
-
-                value = int(user_input)
-
-                if min_val is not None and value < min_val:
-                    print(f"值必须大于等于 {min_val}")
-                    continue
-
-                if max_val is not None and value > max_val:
-                    print(f"值必须小于等于 {max_val}")
-                    continue
-
-                return value
-
-            except ValueError:
-                print("请输入有效的数字")
-            except KeyboardInterrupt:
-                return None
-
-    def _get_yes_no_input(self, prompt: str) -> bool:
-        """获取是否输入"""
-        while True:
-            try:
-                user_input = self._get_input(prompt).strip().lower()
-                if not user_input:
-                    return None
-
-                if user_input in ["y", "yes", "是", "true", "1"]:
-                    return True
-                elif user_input in ["n", "no", "否", "false", "0"]:
-                    return False
-                else:
-                    print("请输入 y/yes/是/true/1 或 n/no/否/false/0")
-
-            except KeyboardInterrupt:
-                return None
-
     def _return_to_main_menu(self) -> None:
         """返回主菜单"""
         # 清空菜单栈，直接返回主菜单
@@ -3635,7 +3596,7 @@ image:
     def _get_input(
         self,
         prompt: str,
-        default: str = None,
+        default: Optional[str] = None,
         required: bool = False,
         allow_space_empty: bool = False,
     ) -> str:
@@ -3666,7 +3627,7 @@ image:
             except EOFError:
                 raise UserInterruptError("输入结束")
 
-    def _get_yes_no_input(self, prompt: str, default: bool = None) -> bool:
+    def _get_yes_no_input(self, prompt: str, default: Optional[bool] = None) -> bool:
         """获取是/否输入"""
         # 如果有默认值，在提示中显示
         if default is not None:
@@ -3762,10 +3723,10 @@ image:
     def _get_int_input(
         self,
         prompt: str,
-        default: int = None,
+        default: Optional[int] = None,
         required: bool = False,
-        min_val: int = None,
-        max_val: int = None,
+        min_val: Optional[int] = None,
+        max_val: Optional[int] = None,
     ) -> int:
         """获取整数输入"""
         while True:
@@ -3928,7 +3889,7 @@ image:
                     if isinstance(value, bool):
                         value_text = "是" if value else "否"
                     else:
-                        value_text = value
+                        value_text = str(value)
                     print(f"{chinese_key}: {value_text}")
 
         # 显示失败文件详情
@@ -4053,7 +4014,7 @@ image:
             dataset_path = self._get_path_input(
                 "请输入YOLO数据集路径: ", must_exist=True
             )
-            output_path = input(
+            output_path: Optional[str] = input(
                 "\n请输入CTDS输出目录（留空使用默认）："
             ).strip()
             output_path = output_path or None

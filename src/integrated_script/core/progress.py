@@ -12,15 +12,17 @@ import time
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator, List, Optional
 
+from .logging_config import get_logger
+
 try:
-    from tqdm import tqdm
+    from tqdm import tqdm as _tqdm
 
     TQDM_AVAILABLE = True
 except ImportError:
     TQDM_AVAILABLE = False
 
     # 简单的进度显示替代
-    class tqdm:
+    class _FallbackTqdm:
         def __init__(self, iterable=None, total=None, desc=None, **kwargs):
             self.iterable = iterable
             self.total = total or (len(iterable) if iterable else 0)
@@ -61,8 +63,10 @@ except ImportError:
             else:
                 print(f"\r{self.desc}: 完成 ({self.current} 项)")
 
+    _tqdm = _FallbackTqdm
 
-from .logging_config import get_logger
+# 兼容测试中 monkeypatch("integrated_script.core.progress.tqdm", ...)
+tqdm = _tqdm
 
 logger = get_logger(__name__)
 
@@ -85,13 +89,13 @@ class ProgressManager:
         """
         self.show_progress = show_progress
         self.progress_bar = None
-        self._start_time = None
+        self._start_time: Optional[float] = None
         self._total_items = 0
         self._processed_items = 0
 
     def create_progress_bar(
         self, total: int, description: str = "", unit: str = "item", **kwargs
-    ) -> Optional[tqdm]:
+    ) -> Optional[_tqdm]:
         """创建进度条
 
         Args:
@@ -120,7 +124,7 @@ class ProgressManager:
             logger.warning(f"创建进度条失败: {str(e)}")
             return None
 
-    def update_progress(self, n: int = 1, description: str = None) -> None:
+    def update_progress(self, n: int = 1, description: Optional[str] = None) -> None:
         """更新进度
 
         Args:

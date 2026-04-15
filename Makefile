@@ -31,17 +31,17 @@ install-dev:
 
 # 测试
 test:
-	pytest tests/ -v
+	python -m pytest tests/ -v
 
 test-cov:
-	pytest tests/ --cov=integrated_script --cov-report=html --cov-report=term-missing
+	python -m pytest tests/ --cov=src/integrated_script --cov-report=term-missing
 
 test-fast:
-	pytest tests/ -x -v
+	python -m pytest tests/ -x -v
 
 # 代码质量
 lint:
-	flake8 src/integrated_script tests/
+	flake8 --max-line-length=120 --extend-ignore=E203,W503 src/integrated_script tests/ scripts/
 
 format:
 	python scripts/format_code.py --format-only

@@ -9,7 +9,7 @@ file_processor.py
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from ..config.exceptions import ProcessingError
 from ..core.base import BaseProcessor
@@ -39,6 +39,24 @@ class FileProcessor(BaseProcessor):
     def initialize(self) -> None:
         """初始化处理器"""
         self.logger.info("文件处理器初始化完成")
+
+    def _build_safe_rename_target(self, base_dir: Path, file_name: str) -> Path:
+        """构建安全的重命名目标路径（仅允许目录内文件名）。"""
+        if not file_name:
+            raise ValueError("文件名不能为空")
+
+        if "/" in file_name or "\\" in file_name:
+            raise ValueError(f"文件名不能包含路径分隔符: {file_name}")
+
+        name_path = Path(file_name)
+        if name_path.is_absolute() or name_path.name != file_name:
+            raise ValueError(f"不安全的文件名: {file_name}")
+
+        candidate = base_dir / file_name
+        if candidate.resolve(strict=False).parent != base_dir.resolve():
+            raise ValueError(f"重命名目标超出目录范围: {file_name}")
+
+        return candidate
 
     def process(self, *args, **kwargs) -> Any:
         """主要处理方法（由子方法实现具体功能）"""
@@ -79,7 +97,7 @@ class FileProcessor(BaseProcessor):
 
             # 获取文件列表
             if file_patterns:
-                files_to_copy = []
+                files_to_copy: List[Path] = []
                 for pattern in file_patterns:
                     if recursive:
                         files_to_copy.extend(source_path.rglob(pattern))
@@ -93,7 +111,7 @@ class FileProcessor(BaseProcessor):
                     source_path, extensions=None, recursive=recursive
                 )
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "source_dir": str(source_path),
                 "target_dir": str(target_path),
@@ -222,7 +240,7 @@ class FileProcessor(BaseProcessor):
 
             # 获取文件列表
             if file_patterns:
-                files_to_move = []
+                files_to_move: List[Path] = []
                 for pattern in file_patterns:
                     if recursive:
                         files_to_move.extend(source_path.rglob(pattern))
@@ -234,7 +252,7 @@ class FileProcessor(BaseProcessor):
                     source_path, extensions=None, recursive=recursive
                 )
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "source_dir": str(source_path),
                 "target_dir": str(target_path),
@@ -379,7 +397,7 @@ class FileProcessor(BaseProcessor):
                 )
                 ordered_images.extend(sub_images)
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "source_dir": str(source_path),
                 "target_dir": str(target_path),
@@ -456,7 +474,7 @@ class FileProcessor(BaseProcessor):
 
             # 获取文件列表
             if file_patterns:
-                files_to_rename = []
+                files_to_rename: List[Path] = []
                 for pattern in file_patterns:
                     if recursive:
                         files_to_rename.extend(target_path.rglob(pattern))
@@ -475,7 +493,7 @@ class FileProcessor(BaseProcessor):
             if shuffle_order:
                 random.shuffle(files_to_rename)
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "target_dir": str(target_path),
                 "rename_pattern": rename_pattern,
@@ -500,7 +518,9 @@ class FileProcessor(BaseProcessor):
                             index=index + 1,
                             index0=index,
                         )
-                        new_path = file_path.parent / new_name
+                        new_path = self._build_safe_rename_target(
+                            file_path.parent, new_name
+                        )
 
                         result["renamed_files"].append(
                             {
@@ -525,7 +545,7 @@ class FileProcessor(BaseProcessor):
                 return result
 
             # 第一阶段：临时重命名（避免冲突）
-            temp_mappings = []
+            temp_mappings: List[Dict[str, Any]] = []
 
             for file_path in files_to_rename:
                 try:
@@ -535,9 +555,34 @@ class FileProcessor(BaseProcessor):
 
                     # 临时重命名
                     file_path.rename(temp_path)
-                    temp_mappings.append((temp_path, file_path.name))
+                    temp_mappings.append(
+                        {
+                            "temp_path": temp_path,
+                            "original_path": file_path,
+                            "original_name": file_path.name,
+                        }
+                    )
 
                 except Exception as e:
+                    rollback_errors = []
+
+                    # 第一阶段失败时，回滚此前已临时改名的文件
+                    for mapping in reversed(temp_mappings):
+                        try:
+                            if mapping["temp_path"].exists() and not mapping[
+                                "original_path"
+                            ].exists():
+                                mapping["temp_path"].rename(mapping["original_path"])
+                        except Exception as rollback_error:
+                            rollback_errors.append(
+                                {
+                                    "success": False,
+                                    "action": "rollback_failed",
+                                    "old_name": str(mapping["original_name"]),
+                                    "error": str(rollback_error),
+                                }
+                            )
+
                     result["failed_files"].append(
                         {
                             "success": False,
@@ -546,11 +591,17 @@ class FileProcessor(BaseProcessor):
                             "error": str(e),
                         }
                     )
-                    result["statistics"]["failed_count"] += 1
+                    result["failed_files"].extend(rollback_errors)
+                    result["statistics"]["failed_count"] += 1 + len(rollback_errors)
                     result["success"] = False
+                    return result
 
             # 第二阶段：正式重命名
-            for index, (temp_path, original_name) in enumerate(temp_mappings):
+            finalized_mappings: List[Dict[str, Any]] = []
+            for index, mapping in enumerate(temp_mappings):
+                temp_path = cast(Path, mapping["temp_path"])
+                original_name = cast(str, mapping["original_name"])
+
                 try:
                     # 生成最终文件名
                     new_name = rename_pattern.format(
@@ -560,16 +611,18 @@ class FileProcessor(BaseProcessor):
                         index0=index,
                     )
 
-                    final_path = temp_path.parent / new_name
+                    final_path = self._build_safe_rename_target(
+                        temp_path.parent, new_name
+                    )
 
                     # 确保新文件名唯一
                     if final_path.exists():
-                        final_path = get_unique_filename(
-                            final_path.parent, final_path.name
-                        )
+                        final_path = get_unique_filename(final_path.parent, final_path.name)
 
                     # 最终重命名
                     temp_path.rename(final_path)
+                    mapping["final_path"] = final_path
+                    finalized_mappings.append(mapping)
 
                     result["renamed_files"].append(
                         {
@@ -582,13 +635,43 @@ class FileProcessor(BaseProcessor):
                     result["statistics"]["renamed_count"] += 1
 
                 except Exception as e:
-                    # 如果最终重命名失败，尝试恢复原名
-                    try:
-                        original_path = temp_path.parent / original_name
-                        if not original_path.exists():
-                            temp_path.rename(original_path)
-                    except Exception:
-                        pass
+                    rollback_errors = []
+
+                    # 1) 回滚已完成最终改名的文件
+                    for done in reversed(finalized_mappings):
+                        try:
+                            final_done = done.get("final_path")
+                            if final_done and final_done.exists() and not done[
+                                "original_path"
+                            ].exists():
+                                final_done.rename(done["original_path"])
+                        except Exception as rollback_error:
+                            rollback_errors.append(
+                                {
+                                    "success": False,
+                                    "action": "rollback_failed",
+                                    "old_name": str(done["original_name"]),
+                                    "error": str(rollback_error),
+                                }
+                            )
+
+                    # 2) 回滚当前及后续仍在 temp 状态的文件
+                    pending_mappings = [mapping] + temp_mappings[index + 1 :]
+                    for pending in reversed(pending_mappings):
+                        try:
+                            if pending["temp_path"].exists() and not pending[
+                                "original_path"
+                            ].exists():
+                                pending["temp_path"].rename(pending["original_path"])
+                        except Exception as rollback_error:
+                            rollback_errors.append(
+                                {
+                                    "success": False,
+                                    "action": "rollback_failed",
+                                    "old_name": str(pending["original_name"]),
+                                    "error": str(rollback_error),
+                                }
+                            )
 
                     result["failed_files"].append(
                         {
@@ -598,8 +681,12 @@ class FileProcessor(BaseProcessor):
                             "error": str(e),
                         }
                     )
-                    result["statistics"]["failed_count"] += 1
+                    result["failed_files"].extend(rollback_errors)
+                    result["statistics"]["renamed_count"] = 0
+                    result["renamed_files"] = []
+                    result["statistics"]["failed_count"] += 1 + len(rollback_errors)
                     result["success"] = False
+                    return result
 
             self.logger.info(f"临时重命名完成: {result['statistics']}")
             return result
@@ -641,7 +728,7 @@ class FileProcessor(BaseProcessor):
 
             # 获取图片文件列表
             image_extensions = [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"]
-            image_files = []
+            image_files: List[Path] = []
             for ext in image_extensions:
                 image_files.extend(images_path.glob(f"*{ext}"))
                 image_files.extend(images_path.glob(f"*{ext.upper()}"))
@@ -676,7 +763,7 @@ class FileProcessor(BaseProcessor):
             if shuffle_order:
                 random.shuffle(valid_pairs)
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "images_dir": str(images_path),
                 "labels_dir": str(labels_path),
@@ -693,7 +780,7 @@ class FileProcessor(BaseProcessor):
             }
 
             # 第一阶段：临时重命名所有文件
-            temp_mappings = []
+            temp_mappings: List[Dict[str, Any]] = []
 
             for img_file, label_file in valid_pairs:
                 try:
@@ -711,24 +798,72 @@ class FileProcessor(BaseProcessor):
                     temp_img_path = img_file.parent / temp_img_name
                     temp_label_path = label_file.parent / temp_label_name
 
-                    # self.logger.info(f"临时重命名: {img_file.name} -> {temp_img_name}")
-                    # self.logger.info(f"临时重命名: {label_file.name} -> {temp_label_name}")
-
                     # 临时重命名
-                    img_file.rename(temp_img_path)
-                    label_file.rename(temp_label_path)
+                    img_renamed = False
+                    label_renamed = False
+                    try:
+                        img_file.rename(temp_img_path)
+                        img_renamed = True
+                        label_file.rename(temp_label_path)
+                        label_renamed = True
+                    except Exception:
+                        # 第一阶段失败时先回滚当前 pair
+                        if img_renamed and temp_img_path.exists() and not img_file.exists():
+                            try:
+                                temp_img_path.rename(img_file)
+                            except Exception:
+                                pass
+                        if label_renamed and temp_label_path.exists() and not label_file.exists():
+                            try:
+                                temp_label_path.rename(label_file)
+                            except Exception:
+                                pass
+                        raise
 
                     temp_mappings.append(
                         {
                             "temp_img": temp_img_path,
                             "temp_label": temp_label_path,
-                            "original_img": img_file.name,
-                            "original_label": label_file.name,
+                            "original_img": img_file,
+                            "original_label": label_file,
+                            "original_img_name": img_file.name,
+                            "original_label_name": label_file.name,
                             "img_ext": img_file.suffix,
                         }
                     )
 
                 except Exception as e:
+                    rollback_errors = []
+
+                    # 第一阶段失败时，回滚此前所有已进入 temp 的 pair
+                    for done in reversed(temp_mappings):
+                        try:
+                            if done["temp_img"].exists() and not done["original_img"].exists():
+                                done["temp_img"].rename(done["original_img"])
+                        except Exception as rollback_error:
+                            rollback_errors.append(
+                                {
+                                    "success": False,
+                                    "action": "rollback_failed",
+                                    "img_file": str(done["original_img_name"]),
+                                    "label_file": str(done["original_label_name"]),
+                                    "error": str(rollback_error),
+                                }
+                            )
+                        try:
+                            if done["temp_label"].exists() and not done["original_label"].exists():
+                                done["temp_label"].rename(done["original_label"])
+                        except Exception as rollback_error:
+                            rollback_errors.append(
+                                {
+                                    "success": False,
+                                    "action": "rollback_failed",
+                                    "img_file": str(done["original_img_name"]),
+                                    "label_file": str(done["original_label_name"]),
+                                    "error": str(rollback_error),
+                                }
+                            )
+
                     result["failed_pairs"].append(
                         {
                             "success": False,
@@ -738,47 +873,56 @@ class FileProcessor(BaseProcessor):
                             "error": str(e),
                         }
                     )
-                    result["statistics"]["failed_count"] += 1
+                    result["failed_pairs"].extend(rollback_errors)
+                    result["statistics"]["failed_count"] += 1 + len(rollback_errors)
                     result["success"] = False
+                    return result
 
             # 第二阶段：正式重命名
+            finalized_mappings: List[Dict[str, Any]] = []
             for index, mapping in enumerate(temp_mappings):
+                final_img_path = None
+                final_label_path = None
                 try:
                     # 生成最终文件名
                     if prefix:
                         final_name = f"{prefix}_{index+1:0{digits}d}"
                     else:
                         final_name = f"{index+1:0{digits}d}"
-                    final_img_name = f"{final_name}{mapping['img_ext']}"
-                    final_label_name = f"{final_name}.txt"
 
-                    final_img_path = mapping["temp_img"].parent / final_img_name
-                    final_label_path = mapping["temp_label"].parent / final_label_name
-
-                    # 确保文件名唯一
-                    if final_img_path.exists():
-                        final_img_path = get_unique_filename(
-                            final_img_path.parent, final_img_path.name
+                    # 生成不冲突且同 stem 的最终文件名
+                    stem_candidate = final_name
+                    suffix_candidate = mapping["img_ext"]
+                    counter = 1
+                    while True:
+                        img_candidate = self._build_safe_rename_target(
+                            mapping["temp_img"].parent,
+                            f"{stem_candidate}{suffix_candidate}",
                         )
-                        # 同步更新标签文件名
-                        final_label_name = f"{final_img_path.stem}.txt"
-                        final_label_path = final_label_path.parent / final_label_name
-
-                    if final_label_path.exists():
-                        final_label_path = get_unique_filename(
-                            final_label_path.parent, final_label_path.name
+                        label_candidate = self._build_safe_rename_target(
+                            mapping["temp_label"].parent,
+                            f"{stem_candidate}.txt",
                         )
+                        if not img_candidate.exists() and not label_candidate.exists():
+                            final_img_path = img_candidate
+                            final_label_path = label_candidate
+                            break
+                        stem_candidate = f"{final_name}_{counter}"
+                        counter += 1
 
                     # 最终重命名
                     mapping["temp_img"].rename(final_img_path)
                     mapping["temp_label"].rename(final_label_path)
+                    mapping["final_img"] = final_img_path
+                    mapping["final_label"] = final_label_path
+                    finalized_mappings.append(mapping)
 
                     result["renamed_pairs"].append(
                         {
                             "success": True,
                             "action": "renamed",
-                            "old_img": mapping["original_img"],
-                            "old_label": mapping["original_label"],
+                            "old_img": mapping["original_img_name"],
+                            "old_label": mapping["original_label_name"],
                             "new_img": final_img_path.name,
                             "new_label": final_label_path.name,
                         }
@@ -786,33 +930,131 @@ class FileProcessor(BaseProcessor):
                     result["statistics"]["renamed_count"] += 1
 
                 except Exception as e:
-                    # 如果最终重命名失败，尝试恢复原名
+                    rollback_errors = []
+
+                    # 0) 先回滚当前 pair（可能已从 temp_img 改到 final_img）
                     try:
-                        original_img_path = (
-                            mapping["temp_img"].parent / mapping["original_img"]
-                        )
-                        original_label_path = (
-                            mapping["temp_label"].parent / mapping["original_label"]
+                        if (
+                            final_img_path
+                            and final_img_path.exists()
+                            and not mapping["original_img"].exists()
+                        ):
+                            final_img_path.rename(mapping["original_img"])
+                        elif (
+                            mapping["temp_img"].exists()
+                            and not mapping["original_img"].exists()
+                        ):
+                            mapping["temp_img"].rename(mapping["original_img"])
+                    except Exception as rollback_error:
+                        rollback_errors.append(
+                            {
+                                "success": False,
+                                "action": "rollback_failed",
+                                "img_file": str(mapping["original_img_name"]),
+                                "label_file": str(mapping["original_label_name"]),
+                                "error": str(rollback_error),
+                            }
                         )
 
-                        if not original_img_path.exists():
-                            mapping["temp_img"].rename(original_img_path)
-                        if not original_label_path.exists():
-                            mapping["temp_label"].rename(original_label_path)
-                    except Exception:
-                        pass
+                    try:
+                        if (
+                            final_label_path
+                            and final_label_path.exists()
+                            and not mapping["original_label"].exists()
+                        ):
+                            final_label_path.rename(mapping["original_label"])
+                        elif (
+                            mapping["temp_label"].exists()
+                            and not mapping["original_label"].exists()
+                        ):
+                            mapping["temp_label"].rename(mapping["original_label"])
+                    except Exception as rollback_error:
+                        rollback_errors.append(
+                            {
+                                "success": False,
+                                "action": "rollback_failed",
+                                "img_file": str(mapping["original_img_name"]),
+                                "label_file": str(mapping["original_label_name"]),
+                                "error": str(rollback_error),
+                            }
+                        )
+
+                    # 1) 回滚已完成最终改名的 pair
+                    for done in reversed(finalized_mappings):
+                        try:
+                            final_img = done.get("final_img")
+                            if final_img and final_img.exists() and not done["original_img"].exists():
+                                final_img.rename(done["original_img"])
+                        except Exception as rollback_error:
+                            rollback_errors.append(
+                                {
+                                    "success": False,
+                                    "action": "rollback_failed",
+                                    "img_file": str(done["original_img_name"]),
+                                    "label_file": str(done["original_label_name"]),
+                                    "error": str(rollback_error),
+                                }
+                            )
+                        try:
+                            final_label = done.get("final_label")
+                            if final_label and final_label.exists() and not done["original_label"].exists():
+                                final_label.rename(done["original_label"])
+                        except Exception as rollback_error:
+                            rollback_errors.append(
+                                {
+                                    "success": False,
+                                    "action": "rollback_failed",
+                                    "img_file": str(done["original_img_name"]),
+                                    "label_file": str(done["original_label_name"]),
+                                    "error": str(rollback_error),
+                                }
+                            )
+
+                    # 2) 回滚后续仍在 temp 状态的 pair
+                    pending_mappings = temp_mappings[index + 1 :]
+                    for pending in reversed(pending_mappings):
+                        try:
+                            if pending["temp_img"].exists() and not pending["original_img"].exists():
+                                pending["temp_img"].rename(pending["original_img"])
+                        except Exception as rollback_error:
+                            rollback_errors.append(
+                                {
+                                    "success": False,
+                                    "action": "rollback_failed",
+                                    "img_file": str(pending["original_img_name"]),
+                                    "label_file": str(pending["original_label_name"]),
+                                    "error": str(rollback_error),
+                                }
+                            )
+                        try:
+                            if pending["temp_label"].exists() and not pending["original_label"].exists():
+                                pending["temp_label"].rename(pending["original_label"])
+                        except Exception as rollback_error:
+                            rollback_errors.append(
+                                {
+                                    "success": False,
+                                    "action": "rollback_failed",
+                                    "img_file": str(pending["original_img_name"]),
+                                    "label_file": str(pending["original_label_name"]),
+                                    "error": str(rollback_error),
+                                }
+                            )
 
                     result["failed_pairs"].append(
                         {
                             "success": False,
                             "action": "final_rename_failed",
-                            "img_file": mapping["original_img"],
-                            "label_file": mapping["original_label"],
+                            "img_file": mapping["original_img_name"],
+                            "label_file": mapping["original_label_name"],
                             "error": str(e),
                         }
                     )
-                    result["statistics"]["failed_count"] += 1
+                    result["failed_pairs"].extend(rollback_errors)
+                    result["statistics"]["renamed_count"] = 0
+                    result["renamed_pairs"] = []
+                    result["statistics"]["failed_count"] += 1 + len(rollback_errors)
                     result["success"] = False
+                    return result
 
             # 记录详细的失败信息到日志
             if result["failed_pairs"]:

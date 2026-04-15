@@ -105,8 +105,8 @@ class ImageProcessor(BaseProcessor):
         self,
         input_path: str,
         target_format: str,
-        output_path: str = None,
-        quality: int = None,
+        output_path: Optional[str] = None,
+        quality: Optional[int] = None,
         recursive: bool = False,
     ) -> Dict[str, Any]:
         """转换图像格式（兼容性方法）
@@ -126,34 +126,34 @@ class ImageProcessor(BaseProcessor):
         if input_path_obj.is_file():
             # 单个文件转换
             if output_path is None:
-                output_path = (
+                output_path_obj = (
                     input_path_obj.parent
                     / f"{input_path_obj.stem}.{target_format.lstrip('.')}"
                 )
             else:
-                output_path = Path(output_path)
-                if output_path.is_dir():
-                    output_path = (
-                        output_path
+                output_path_obj = Path(output_path)
+                if output_path_obj.is_dir():
+                    output_path_obj = (
+                        output_path_obj
                         / f"{input_path_obj.stem}.{target_format.lstrip('.')}"
                     )
 
             # 转换单个文件
             self._convert_single_image(
                 input_path_obj,
-                Path(output_path),
+                output_path_obj,
                 target_format,
                 quality or self.default_quality,
             )
 
             # 返回结果
             input_size = input_path_obj.stat().st_size
-            output_size = Path(output_path).stat().st_size
+            output_size = output_path_obj.stat().st_size
 
             return {
                 "success": True,
                 "input_file": str(input_path_obj),
-                "output_file": str(output_path),
+                "output_file": str(output_path_obj),
                 "input_size": input_size,
                 "output_size": output_size,
                 "compression_ratio": (
@@ -179,7 +179,7 @@ class ImageProcessor(BaseProcessor):
         input_dir: str,
         output_dir: str,
         target_format: str = "jpg",
-        quality: int = None,
+        quality: Optional[int] = None,
         recursive: bool = False,
     ) -> Dict[str, Any]:
         """批量转换图像格式
@@ -223,7 +223,7 @@ class ImageProcessor(BaseProcessor):
                     f"目录中的所有文件: {[f.name for f in all_files if f.is_file()]}"
                 )
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "input_dir": str(input_path),
                 "output_dir": str(output_path),
@@ -412,7 +412,7 @@ class ImageProcessor(BaseProcessor):
             # 获取图像文件列表
             image_files = get_file_list(input_path, self.supported_formats, recursive)
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "input_dir": str(input_path),
                 "output_dir": str(output_path),
@@ -531,8 +531,8 @@ class ImageProcessor(BaseProcessor):
             normalized_extensions = [".jpg", ".jpeg", ".png"]
 
         image_files = []
-        globber = dir_path.rglob if recursive else dir_path.iterdir
-        for entry in globber("*"):
+        entries = dir_path.rglob("*") if recursive else dir_path.iterdir()
+        for entry in entries:
             if not entry.is_file():
                 continue
             if not include_hidden and entry.name.startswith("."):
@@ -551,9 +551,9 @@ class ImageProcessor(BaseProcessor):
         if using_tqdm:
             iterator = tqdm(image_files, desc="修复图像", unit="张", total=total_files)
 
-        for idx, img_file in enumerate(iterator, start=1):
+        for img_file in iterator:
             try:
-                _ = self._load_and_rewrite(img_file)
+                self._load_and_rewrite(img_file)
                 repaired_files.append(str(img_file))
                 loaded_files.append(str(img_file))
                 continue
@@ -653,20 +653,26 @@ class ImageProcessor(BaseProcessor):
     ) -> None:
         """使用PIL转换图像"""
         try:
-            with Image.open(input_file) as img:
+            with Image.open(input_file) as source_img:
                 # 转换为RGB模式（如果需要）
-                if target_format.lower() in ["jpg", "jpeg"] and img.mode in [
+                if target_format.lower() in ["jpg", "jpeg"] and source_img.mode in [
                     "RGBA",
                     "P",
                 ]:
                     # 创建白色背景
-                    background = Image.new("RGB", img.size, (255, 255, 255))
-                    if img.mode == "P":
-                        img = img.convert("RGBA")
-                    background.paste(
-                        img, mask=img.split()[-1] if img.mode == "RGBA" else None
+                    background = Image.new("RGB", source_img.size, (255, 255, 255))
+                    rgba_img = (
+                        source_img.convert("RGBA")
+                        if source_img.mode == "P"
+                        else source_img
                     )
-                    img = background
+                    background.paste(
+                        rgba_img,
+                        mask=rgba_img.split()[-1] if rgba_img.mode == "RGBA" else None,
+                    )
+                    final_img = background
+                else:
+                    final_img = source_img
 
                 # 保存图像
                 save_kwargs = {}
@@ -683,8 +689,7 @@ class ImageProcessor(BaseProcessor):
                 pil_format = target_format.upper()
                 if pil_format == "JPG":
                     pil_format = "JPEG"  # PIL使用JPEG而不是JPG
-                img.save(output_file, format=pil_format, **save_kwargs)
-
+                final_img.save(output_file, format=pil_format, **save_kwargs)
         except Exception as e:
             raise FileProcessingError(
                 f"PIL转换图像失败: {str(e)}",
@@ -753,16 +758,15 @@ class ImageProcessor(BaseProcessor):
     ) -> None:
         """使用PIL调整图像尺寸"""
         try:
-            with Image.open(input_file) as img:
+            with Image.open(input_file) as source_img:
                 if maintain_aspect_ratio:
                     # 保持宽高比
-                    img.thumbnail(target_size, Image.Resampling.LANCZOS)
+                    source_img.thumbnail(target_size, Image.Resampling.LANCZOS)
+                    source_img.save(output_file)
                 else:
                     # 直接调整到目标尺寸
-                    img = img.resize(target_size, Image.Resampling.LANCZOS)
-
-                # 保存图像
-                img.save(output_file)
+                    resized_img = source_img.resize(target_size, Image.Resampling.LANCZOS)
+                    resized_img.save(output_file)
 
         except Exception as e:
             raise FileProcessingError(
@@ -843,11 +847,11 @@ class ImageProcessor(BaseProcessor):
     def compress_images(
         self,
         input_dir: str,
-        output_dir: str = None,
+        output_dir: Optional[str] = None,
         quality: int = 85,
-        target_format: str = None,
+        target_format: Optional[str] = None,
         recursive: bool = False,
-        max_size: Tuple[int, int] = None,
+        max_size: Optional[Tuple[int, int]] = None,
     ) -> Dict[str, Any]:
         """压缩图像
 
@@ -960,7 +964,7 @@ class ImageProcessor(BaseProcessor):
             # 获取图像文件列表
             image_files = get_file_list(input_path, self.supported_formats, recursive)
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "input_dir": str(input_path),
                 "output_dir": str(output_path),
@@ -1164,13 +1168,13 @@ class ImageProcessor(BaseProcessor):
     def compress_images_multiprocess_batch(
         self,
         input_dir: str,
-        output_dir: str = None,
+        output_dir: Optional[str] = None,
         quality: int = 85,
-        target_format: str = None,
+        target_format: Optional[str] = None,
         recursive: bool = False,
-        max_size: Tuple[int, int] = None,
+        max_size: Optional[Tuple[int, int]] = None,
         batch_count: int = 100,
-        max_processes: int = None,
+        max_processes: Optional[int] = None,
     ) -> Dict[str, Any]:
         """使用多进程分批处理压缩图像
 
@@ -1262,7 +1266,7 @@ class ImageProcessor(BaseProcessor):
             batches.append(batch)
 
         # 初始化结果
-        result = {
+        result: Dict[str, Any] = {
             "success": True,
             "input_dir": str(input_path),
             "output_dir": str(output_path),
@@ -1333,7 +1337,7 @@ class ImageProcessor(BaseProcessor):
             progress_thread_running = True
 
             def progress_listener():
-                nonlocal processed_files, progress_thread_running
+                nonlocal processed_files
                 while progress_thread_running:
                     try:
                         # 从队列中获取进度更新（非阻塞）
@@ -1481,7 +1485,7 @@ class ImageProcessor(BaseProcessor):
         output_file: Path,
         quality: int,
         target_format: str,
-        max_size: Tuple[int, int] = None,
+        max_size: Optional[Tuple[int, int]] = None,
     ) -> None:
         """压缩单个图像"""
         try:
@@ -1507,7 +1511,7 @@ class ImageProcessor(BaseProcessor):
         output_file: Path,
         quality: int,
         target_format: str,
-        max_size: Tuple[int, int] = None,
+        max_size: Optional[Tuple[int, int]] = None,
     ) -> None:
         """使用PIL压缩图像"""
         original_img = None
@@ -1588,7 +1592,7 @@ class ImageProcessor(BaseProcessor):
         output_file: Path,
         quality: int,
         target_format: str,
-        max_size: Tuple[int, int] = None,
+        max_size: Optional[Tuple[int, int]] = None,
     ) -> None:
         """使用OpenCV压缩图像"""
         img = None
@@ -1713,7 +1717,7 @@ class ImageProcessor(BaseProcessor):
             # 获取图像文件列表
             image_files = get_file_list(img_path, self.supported_formats, recursive)
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "input_dir": str(img_path),
                 "recursive": recursive,
@@ -1785,8 +1789,8 @@ def _process_batch_worker(
     input_dir: str,
     output_dir: str,
     quality: int,
-    target_format: str,
-    max_size: Tuple[int, int],
+    target_format: Optional[str],
+    max_size: Optional[Tuple[int, int]],
     recursive: bool,
     progress_queue=None,
 ) -> Dict[str, Any]:
@@ -1833,7 +1837,7 @@ def _process_batch_worker(
     output_path = Path(output_dir)
 
     # 初始化批次结果
-    batch_result = {
+    batch_result: Dict[str, Any] = {
         "compressed_files": [],
         "failed_files": [],
         "statistics": {
@@ -2017,7 +2021,6 @@ def _process_batch_worker(
 
     # 处理批次中的所有文件
     processed_count = 0
-    _ = len(batch_files)
 
     for img_file in batch_files:
         try:

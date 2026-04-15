@@ -9,7 +9,7 @@ label_processor.py
 """
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ..config.exceptions import ProcessingError, ValidationError
 from ..core.base import BaseProcessor
@@ -52,7 +52,7 @@ class LabelProcessor(BaseProcessor):
         raise NotImplementedError("请使用具体的处理方法")
 
     def create_empty_labels(
-        self, images_dir: str, labels_dir: str = None, overwrite: bool = False
+        self, images_dir: str, labels_dir: Optional[str] = None, overwrite: bool = False
     ) -> Dict[str, Any]:
         """为图像创建空白标签文件
 
@@ -82,7 +82,7 @@ class LabelProcessor(BaseProcessor):
                 images_path, self.image_extensions, recursive=False
             )
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "images_dir": str(images_path),
                 "labels_dir": str(labels_path),
@@ -183,7 +183,7 @@ class LabelProcessor(BaseProcessor):
             # 获取标签文件
             label_files = get_file_list(labels_path, [".txt"], recursive=False)
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "labels_dir": str(labels_path),
                 "flip_type": flip_type,
@@ -312,7 +312,7 @@ class LabelProcessor(BaseProcessor):
             # 获取标签文件
             label_files = get_file_list(labels_path, [".txt"], recursive=False)
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "labels_dir": str(labels_path),
                 "target_classes": target_classes,
@@ -458,7 +458,7 @@ class LabelProcessor(BaseProcessor):
             # 获取标签文件
             label_files = get_file_list(labels_path, [".txt"], recursive=False)
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "dataset_dir": str(dataset_path),
                 "images_dir": str(images_path),
@@ -588,7 +588,7 @@ class LabelProcessor(BaseProcessor):
             # 获取标签文件
             label_files = get_file_list(labels_path, [".txt"], recursive=False)
 
-            result = {
+            result: Dict[str, Any] = {
                 "success": True,
                 "dataset_dir": str(dataset_path),
                 "images_dir": str(images_path),

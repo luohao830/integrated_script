@@ -9,7 +9,7 @@ dataset_processor.py
 """
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, cast
 
 from ..core.base import BaseProcessor
 from ..core.progress import process_with_progress
@@ -55,7 +55,7 @@ class DatasetProcessor(BaseProcessor):
 
         只检查images和labels目录中的文件是否一一匹配，忽略其他文件。
         """
-        result = {
+        result: Dict[str, Any] = {
             "success": True,
             "dataset_path": str(dataset_dir),
             "format": "yolo",
@@ -87,8 +87,11 @@ class DatasetProcessor(BaseProcessor):
         image_files = get_file_list(images_dir, self.image_extensions, recursive=False)
         label_files = get_file_list(labels_dir, [".txt"], recursive=False)
 
-        result["statistics"]["total_images"] = len(image_files)
-        result["statistics"]["total_labels"] = len(label_files)
+        stats = cast(Dict[str, Any], result["statistics"])
+        issues = cast(List[Dict[str, Any]], result["issues"])
+
+        stats["total_images"] = len(image_files)
+        stats["total_labels"] = len(label_files)
 
         # 创建文件映射
         image_stems = {f.stem: f for f in image_files}
@@ -99,8 +102,8 @@ class DatasetProcessor(BaseProcessor):
         self.logger.info(f"标签文件stems: {list(label_stems.keys())}")
 
         # 检查孤立文件
-        orphaned_images = []
-        orphaned_labels = []
+        orphaned_images: List[Path] = []
+        orphaned_labels: List[Path] = []
 
         for stem, img_file in image_stems.items():
             if stem not in label_stems:
@@ -112,12 +115,12 @@ class DatasetProcessor(BaseProcessor):
                 orphaned_labels.append(label_file)
                 self.logger.info(f"发现孤立标签: {label_file} (stem: {stem})")
 
-        result["statistics"]["orphaned_images"] = len(orphaned_images)
-        result["statistics"]["orphaned_labels"] = len(orphaned_labels)
+        stats["orphaned_images"] = len(orphaned_images)
+        stats["orphaned_labels"] = len(orphaned_labels)
 
         # 计算成功配对的数量
         matched_pairs = len(set(image_stems.keys()) & set(label_stems.keys()))
-        result["statistics"]["matched_pairs"] = matched_pairs
+        stats["matched_pairs"] = matched_pairs
 
         # 调试日志：打印孤立文件统计
         self.logger.info(
@@ -133,7 +136,7 @@ class DatasetProcessor(BaseProcessor):
                     str(f) for f in orphaned_images[:10]
                 ],  # 只显示前10个用于预览
             }
-            result["issues"].append(issue)
+            issues.append(issue)
             self.logger.info(
                 f"添加孤立图像issue到结果: {issue['type']}, count={issue['count']}"
             )
@@ -147,15 +150,15 @@ class DatasetProcessor(BaseProcessor):
                     str(f) for f in orphaned_labels[:10]
                 ],  # 只显示前10个用于预览
             }
-            result["issues"].append(issue)
+            issues.append(issue)
             self.logger.info(
                 f"添加孤立标签issue到结果: {issue['type']}, count={issue['count']}"
             )
 
         # 检查标签文件完整性
         if check_integrity:
-            invalid_labels = []
-            empty_labels = []
+            invalid_labels: List[Dict[str, Any]] = []
+            empty_labels: List[Dict[str, Any]] = []
 
             def validate_label_file(label_file: Path) -> Dict[str, Any]:
                 try:
@@ -243,11 +246,11 @@ class DatasetProcessor(BaseProcessor):
                     elif val_result["type"] == "empty":
                         empty_labels.append(val_result)
 
-            result["statistics"]["invalid_labels"] = len(invalid_labels)
-            result["statistics"]["empty_labels"] = len(empty_labels)
+            stats["invalid_labels"] = len(invalid_labels)
+            stats["empty_labels"] = len(empty_labels)
 
             if invalid_labels:
-                result["issues"].append(
+                issues.append(
                     {
                         "type": "invalid_labels",
                         "count": len(invalid_labels),
@@ -257,7 +260,7 @@ class DatasetProcessor(BaseProcessor):
                 )
 
             if empty_labels:
-                result["issues"].append(
+                issues.append(
                     {
                         "type": "empty_labels",
                         "count": len(empty_labels),
@@ -271,18 +274,18 @@ class DatasetProcessor(BaseProcessor):
                 )
 
         # 判断整体验证结果
-        self.logger.info(f"验证结束时issues数量: {len(result['issues'])}")
-        for i, issue in enumerate(result["issues"]):
+        self.logger.info(f"验证结束时issues数量: {len(issues)}")
+        for i, issue in enumerate(issues):
             self.logger.info(f"Issue {i}: type={issue['type']}, count={issue['count']}")
 
-        if result["issues"]:
+        if issues:
             result["success"] = False
             self.logger.info("由于存在issues，设置success=False")
         else:
             self.logger.info("没有issues，保持success=True")
 
         self.logger.info(
-            f"YOLO数据集验证完成: {result['statistics']}, success={result['success']}"
+            f"YOLO数据集验证完成: {stats}, success={result['success']}"
         )
         return result
 

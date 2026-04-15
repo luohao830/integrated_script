@@ -63,7 +63,11 @@ class CodeFormatter:
     def check_with_flake8(self) -> bool:
         """使用 Flake8 检查代码质量"""
         print("🔧 运行 Flake8 代码质量检查...")
-        command = ["flake8"] + self.src_dirs
+        command = [
+            "flake8",
+            "--max-line-length=120",
+            "--extend-ignore=E203,W503",
+        ] + self.src_dirs + ["tests"]
         success, output = self.run_command(command)
         if success:
             print("✅ Flake8 检查通过")

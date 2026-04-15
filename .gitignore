@@ -128,9 +128,6 @@ ENV/
 env.bak/
 venv.bak/
 
-# Test files
-tests/
-
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -205,7 +202,6 @@ Thumbs.db
 
 # Source directory specific
 src/temp/
-src/test_*/
 src/labels/
 src/*.txt
 src/config.json
@@ -219,7 +215,6 @@ build/
 dist/
 
 # Development and testing files
-test_*
 debug_*
 scratch_*
 example_*
@@ -409,8 +404,8 @@ secrets/
 TODO.md
 NOTES.md
 scratch.*
-test.*
 debug.*
 AGENTS.md
 CLAUDE.md
 .claude/
+.context/

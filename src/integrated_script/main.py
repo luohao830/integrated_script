@@ -97,19 +97,18 @@ def load_config_from_args(args) -> ConfigManager:
     Returns:
         ConfigManager: 配置管理器实例
     """
-    config_manager = ConfigManager()
+    if not args.config:
+        return ConfigManager()
 
-    if args.config:
-        try:
-            config_manager.load_config(args.config)
-            logger = get_logger(__name__)
-            logger.info(f"已加载配置文件: {args.config}")
-        except Exception as e:
-            logger = get_logger(__name__)
-            logger.error(f"加载配置文件失败: {e}")
-            sys.exit(1)
-
-    return config_manager
+    try:
+        config_manager = ConfigManager(config_file=args.config)
+        logger = get_logger(__name__)
+        logger.info(f"已加载配置文件: {args.config}")
+        return config_manager
+    except Exception as e:
+        logger = get_logger(__name__)
+        logger.error(f"加载配置文件失败: {e}")
+        sys.exit(1)
 
 
 def run_interactive_mode(config_manager: ConfigManager) -> int:

@@ -8,12 +8,13 @@ settings.py
 提供配置文件的读取、写入、验证和管理功能。
 """
 
+import copy
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from .exceptions import ConfigurationError, FileProcessingError
 
@@ -29,7 +30,7 @@ class ConfigManager:
         auto_save (bool): 是否自动保存
     """
 
-    DEFAULT_CONFIG = {
+    DEFAULT_CONFIG: Dict[str, Any] = {
         "version": "1.0.0",
         "debug": False,
         "log_level": "INFO",
@@ -78,7 +79,9 @@ class ConfigManager:
         },
     }
 
-    def __init__(self, config_file: Union[str, Path] = None, auto_save: bool = True):
+    def __init__(
+        self, config_file: Optional[Union[str, Path]] = None, auto_save: bool = True
+    ):
         """初始化配置管理器
 
         Args:
@@ -90,7 +93,7 @@ class ConfigManager:
 
         self.config_file = Path(config_file)
         self.auto_save = auto_save
-        self.config_data = self.DEFAULT_CONFIG.copy()
+        self.config_data: Dict[str, Any] = copy.deepcopy(self.DEFAULT_CONFIG)
 
         # 创建配置目录
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
@@ -133,6 +136,8 @@ class ConfigManager:
             raise ConfigurationError(
                 f"配置文件解析错误: {str(e)}", config_file=str(self.config_file)
             )
+        except ConfigurationError:
+            raise
         except Exception as e:
             raise FileProcessingError(
                 f"读取配置文件失败: {str(e)}",
@@ -168,7 +173,6 @@ class ConfigManager:
                     )
                 else:
                     json.dump(save_data, f, ensure_ascii=False, indent=2)
-
 
         except Exception as e:
             raise FileProcessingError(
@@ -251,16 +255,16 @@ class ConfigManager:
                     self.config_data = self._flatten_yaml_config(default_config)
             except Exception:
                 # 如果加载失败，使用内置默认配置
-                self.config_data = self.DEFAULT_CONFIG.copy()
+                self.config_data = copy.deepcopy(self.DEFAULT_CONFIG)
         else:
-            self.config_data = self.DEFAULT_CONFIG.copy()
+            self.config_data = copy.deepcopy(self.DEFAULT_CONFIG)
 
         if self.auto_save:
             self.save()
 
     def _flatten_yaml_config(self, yaml_config: Dict[str, Any]) -> Dict[str, Any]:
         """将YAML配置转换为扁平格式"""
-        flattened = self.DEFAULT_CONFIG.copy()
+        flattened = copy.deepcopy(self.DEFAULT_CONFIG)
 
         # 映射YAML配置到我们的格式
         if "app" in yaml_config:
@@ -361,7 +365,7 @@ class ConfigManager:
         Returns:
             dict: 配置字典的副本
         """
-        return self.config_data.copy()
+        return copy.deepcopy(self.config_data)
 
     def __str__(self) -> str:
         return f"ConfigManager(file={self.config_file}, auto_save={self.auto_save})"

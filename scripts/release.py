@@ -8,8 +8,6 @@ release.py
 简化发布流程，包括版本管理、构建、测试和发布
 """
 
-import json
-import os
 import subprocess
 import sys
 import time
@@ -17,9 +15,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import requests
-
-# 添加脚本目录到路径
-sys.path.insert(0, str(Path(__file__).parent))
 
 from version_manager import VersionManager
 
@@ -72,7 +67,7 @@ class ReleaseManager:
 
         try:
             # 尝试运行 pytest
-            result = subprocess.run(
+            subprocess.run(
                 ["python", "-m", "pytest", "-v"], cwd=self.project_root, check=True
             )
 
@@ -96,7 +91,7 @@ class ReleaseManager:
             return False
 
         try:
-            result = subprocess.run(
+            subprocess.run(
                 ["python", "build_exe.py"], cwd=self.project_root, check=True
             )
 
@@ -225,8 +220,8 @@ class ReleaseManager:
     def wait_for_github_actions(self, version: str, timeout: int = 600) -> bool:
         """等待 GitHub Actions 完成"""
         print("⏳ 等待 GitHub Actions 构建完成...")
-        print(f"   可以在以下链接查看进度:")
-        print(f"   https://github.com/luohao091/integrated_script/actions")
+        print("   可以在以下链接查看进度:")
+        print("   https://github.com/luohao091/integrated_script/actions")
 
         # 等待GitHub触发新的工作流（标签推送后需要一些时间）
         print("   🕐 等待 GitHub 触发新工作流...")
@@ -242,7 +237,7 @@ class ReleaseManager:
 
             if status_info.get("status") == "error":
                 print("⚠️  API 检查失败，切换到简单等待模式")
-                break
+                return False
             elif status_info.get("status") == "not_found":
                 print("   🔍 等待工作流启动...")
                 consecutive_old_workflow_count = 0
@@ -301,11 +296,11 @@ class ReleaseManager:
                             f"   🔍 发现旧工作流 {branch_info}，继续等待目标版本 v{version} 的工作流..."
                         )
                     elif consecutive_old_workflow_count >= 5:
-                        print(f"   ⚠️  连续5次检查都是旧工作流，可能新工作流触发失败")
+                        print("   ⚠️  连续5次检查都是旧工作流，可能新工作流触发失败")
                         print(
-                            f"   💡 建议手动检查 GitHub Actions 页面: https://github.com/luohao091/integrated_script/actions"
+                            "   💡 建议手动检查 GitHub Actions 页面: https://github.com/luohao091/integrated_script/actions"
                         )
-                        return True  # 避免无限等待
+                        return False  # 避免无限等待
 
             # 等待下次检查
             elapsed = int(time.time() - start_time)
@@ -313,7 +308,7 @@ class ReleaseManager:
             time.sleep(check_interval)
 
         print("⏰ 等待超时，请手动检查 GitHub Actions 状态")
-        return True
+        return False
 
     def release(
         self,
@@ -358,7 +353,15 @@ class ReleaseManager:
             return False
 
         # 5. 更新版本并创建标签
-        new_version = self.vm.release(version_type, message)
+        try:
+            new_version = self.vm.release(version_type, message)
+        except Exception as e:
+            print(f"❌ 发布失败: 版本发布步骤失败: {e}")
+            return False
+
+        if not new_version:
+            print("❌ 发布失败: 未获取到有效版本号")
+            return False
 
         # 6. 推送到 GitHub (可选)
         if auto_push:
@@ -367,7 +370,9 @@ class ReleaseManager:
                 return False
 
             # 7. 等待 GitHub Actions
-            self.wait_for_github_actions(new_version)
+            if not self.wait_for_github_actions(new_version):
+                print("❌ 发布失败: GitHub Actions 未通过")
+                return False
         else:
             # 获取当前分支名用于显示
             try:
@@ -378,7 +383,7 @@ class ReleaseManager:
                     check=True,
                 )
                 current_branch = result.stdout.strip()
-            except:
+            except subprocess.CalledProcessError:
                 current_branch = "main"  # 默认分支名
 
             print("\n📋 手动推送命令:")
@@ -393,7 +398,7 @@ class ReleaseManager:
                 f"   GitHub Release: https://github.com/your-username/integrated_script/releases/tag/v{new_version}"
             )
             print(
-                f"   GitHub Actions: https://github.com/your-username/integrated_script/actions"
+                "   GitHub Actions: https://github.com/your-username/integrated_script/actions"
             )
 
         return True
@@ -448,7 +453,7 @@ def interactive_release():
         message = None
 
     # 确认发布
-    print(f"\n🎯 发布配置:")
+    print("\n🎯 发布配置:")
     print(f"  版本类型: {version_type}")
     print(f"  跳过测试: {'是' if skip_tests else '否'}")
     print(f"  跳过构建: {'是' if skip_build else '否'}")

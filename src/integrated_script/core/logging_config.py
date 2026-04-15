@@ -239,7 +239,7 @@ def setup_logging(
     return _log_manager
 
 
-def get_logger(name: str = None) -> logging.Logger:
+def get_logger(name: Optional[str] = None) -> logging.Logger:
     """获取日志记录器
 
     Args:
@@ -257,8 +257,9 @@ def get_logger(name: str = None) -> logging.Logger:
         # 自动获取调用模块名
         import inspect
 
-        frame = inspect.currentframe().f_back
-        name = frame.f_globals.get("__name__", "unknown")
+        frame = inspect.currentframe()
+        caller_frame = frame.f_back if frame else None
+        name = caller_frame.f_globals.get("__name__", "unknown") if caller_frame else "unknown"
 
     return _log_manager.get_logger(name)
 

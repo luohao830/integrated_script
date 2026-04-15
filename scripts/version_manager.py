@@ -118,9 +118,11 @@ class VersionManager:
 
         content = self.main_file.read_text(encoding="utf-8")
 
-        # 更新 --version 参数的版本号
+        # 更新 --version 参数的版本号（兼容单双引号）
         new_content = re.sub(
-            r"version='[^']*'", f"version='%(prog)s {new_version}'", content
+            r"version\s*=\s*(['\"])%\(prog\)s\s+[^'\"]*\1",
+            lambda m: f"version={m.group(1)}%(prog)s {new_version}{m.group(1)}",
+            content,
         )
 
         self.main_file.write_text(new_content, encoding="utf-8")
@@ -205,17 +207,15 @@ class VersionManager:
 
         # 提交更改
         if not self.commit_version_changes(new_version):
-            print("❌ 发布失败: 无法提交版本更改")
-            return new_version
+            raise RuntimeError("发布失败: 无法提交版本更改")
 
         # 创建标签
         if not self.create_git_tag(new_version, message):
-            print("❌ 发布失败: 无法创建 Git 标签")
-            return new_version
+            raise RuntimeError("发布失败: 无法创建 Git 标签")
 
         print(f"🎉 发布完成! 版本: {new_version}")
         print("\n📋 下一步操作:")
-        print(f"   git push origin master")
+        print("   git push origin master")
         print(f"   git push origin v{new_version}")
         print("\n🤖 推送标签后，GitHub Actions 将自动构建和发布 EXE 文件")
 
@@ -274,7 +274,7 @@ def main():
             print(f"当前版本: {version}")
 
         elif args.command == "release":
-            new_version = vm.release(args.type, args.message)
+            vm.release(args.type, args.message)
 
         elif args.command == "tag":
             version = args.version.lstrip("v")

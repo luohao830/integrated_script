@@ -8,6 +8,8 @@ exceptions.py
 定义了项目中使用的各种自定义异常类，用于更精确的错误处理和调试。
 """
 
+from typing import Any, Dict, Optional
+
 
 class ProcessingError(Exception):
     """处理过程中的基础异常类
@@ -20,11 +22,16 @@ class ProcessingError(Exception):
         context (dict): 错误上下文信息
     """
 
-    def __init__(self, message: str, error_code: str = None, context: dict = None):
+    def __init__(
+        self,
+        message: str,
+        error_code: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(message)
         self.message = message
         self.error_code = error_code or "PROCESSING_ERROR"
-        self.context = context or {}
+        self.context: Dict[str, Any] = context or {}
 
     def __str__(self):
         if self.context:
@@ -41,7 +48,7 @@ class PathError(ProcessingError):
         path (str): 出错的路径
     """
 
-    def __init__(self, message: str, path: str = None, **kwargs):
+    def __init__(self, message: str, path: Optional[str] = None, **kwargs: Any):
         super().__init__(message, error_code="PATH_ERROR", **kwargs)
         self.path = path
         if path:
@@ -59,7 +66,11 @@ class FileProcessingError(ProcessingError):
     """
 
     def __init__(
-        self, message: str, file_path: str = None, operation: str = None, **kwargs
+        self,
+        message: str,
+        file_path: Optional[str] = None,
+        operation: Optional[str] = None,
+        **kwargs: Any,
     ):
         super().__init__(message, error_code="FILE_PROCESSING_ERROR", **kwargs)
         self.file_path = file_path
@@ -81,7 +92,11 @@ class ConfigurationError(ProcessingError):
     """
 
     def __init__(
-        self, message: str, config_key: str = None, config_file: str = None, **kwargs
+        self,
+        message: str,
+        config_key: Optional[str] = None,
+        config_file: Optional[str] = None,
+        **kwargs: Any,
     ):
         super().__init__(message, error_code="CONFIGURATION_ERROR", **kwargs)
         self.config_key = config_key
@@ -106,10 +121,10 @@ class ValidationError(ProcessingError):
     def __init__(
         self,
         message: str,
-        validation_type: str = None,
-        expected: str = None,
-        actual: str = None,
-        **kwargs,
+        validation_type: Optional[str] = None,
+        expected: Optional[str] = None,
+        actual: Optional[str] = None,
+        **kwargs: Any,
     ):
         super().__init__(message, error_code="VALIDATION_ERROR", **kwargs)
         self.validation_type = validation_type
@@ -134,7 +149,11 @@ class DatasetError(ProcessingError):
     """
 
     def __init__(
-        self, message: str, dataset_path: str = None, dataset_type: str = None, **kwargs
+        self,
+        message: str,
+        dataset_path: Optional[str] = None,
+        dataset_type: Optional[str] = None,
+        **kwargs: Any,
     ):
         super().__init__(message, error_code="DATASET_ERROR", **kwargs)
         self.dataset_path = dataset_path
@@ -151,7 +170,7 @@ class UserInterruptError(ProcessingError):
     用户主动中断操作时抛出。
     """
 
-    def __init__(self, message: str = "操作被用户中断", **kwargs):
+    def __init__(self, message: str = "操作被用户中断", **kwargs: Any):
         super().__init__(message, error_code="USER_INTERRUPT", **kwargs)
 
 

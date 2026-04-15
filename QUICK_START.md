@@ -4,7 +4,7 @@
 
 ## 1. 环境准备
 
-- Python 3.7+
+- Python 3.8+
 - Windows / Linux / macOS
 
 安装依赖：

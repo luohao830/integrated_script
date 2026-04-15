@@ -9,7 +9,7 @@ menu.py
 """
 
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ..config.exceptions import UserInterruptError
 
@@ -48,7 +48,7 @@ class MenuSystem:
         self.main_menu = menu
         self.current_menu = menu
 
-    def show_menu(self, menu: Dict[str, Any] = None) -> None:
+    def show_menu(self, menu: Optional[Dict[str, Any]] = None) -> None:
         """显示菜单
 
         Args:
