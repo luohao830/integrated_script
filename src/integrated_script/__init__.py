@@ -29,7 +29,7 @@ from .contracts import NormalizedError, OperationResult, normalize_exception
 
 # 导入主要类和函数
 from .core.base import BaseProcessor
-from .workflows import YoloWorkflow
+from .workflows import FileWorkflow, ImageWorkflow, LabelWorkflow, YoloWorkflow
 
 # 定义公共API
 __all__ = [
@@ -43,6 +43,9 @@ __all__ = [
     "NormalizedError",
     "normalize_exception",
     "YoloWorkflow",
+    "ImageWorkflow",
+    "FileWorkflow",
+    "LabelWorkflow",
     "__version__",
 ]
 

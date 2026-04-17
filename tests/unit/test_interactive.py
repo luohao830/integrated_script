@@ -1,9 +1,11 @@
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pytest
 
 from integrated_script.config.settings import ConfigManager
 from integrated_script.ui.interactive import InteractiveInterface
+from integrated_script.workflows.file_workflow import FileWorkflow
 
 
 class _StubYoloProcessor:
@@ -373,6 +375,824 @@ def test_yolo_convert_to_ctds_shows_failure_message_from_workflow(
     assert any("❌ 转换失败" in line for line in printed)
     assert any("错误信息: 内部处理失败" in line for line in printed)
     assert len(_FailingWorkflow.instances) == 1
-    assert _FailingWorkflow.instances[0].convert_calls[0][0] == "/tmp/yolo-dataset"
-    assert _FailingWorkflow.instances[0].convert_calls[0][1] is None
-    assert _FailingWorkflow.instances[0].processor is marker_processor
+
+
+def test_yolo_convert_to_xlabel_auto_uses_yolo_workflow_adapter(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    class _WorkflowForConvert:
+        instances: List["_WorkflowForConvert"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.detect_calls: List[str] = []
+            self.convert_calls: List[Tuple[str, Optional[str]]] = []
+            _WorkflowForConvert.instances.append(self)
+
+        def detect_yolo_dataset_type(self, dataset_path: str) -> Dict[str, Any]:
+            self.detect_calls.append(dataset_path)
+            return {
+                "detected_type": "detection",
+                "confidence": 0.93,
+                "statistics": {
+                    "total_files": 8,
+                    "detection_files": 8,
+                    "segmentation_files": 0,
+                },
+            }
+
+        def convert_yolo_to_xlabel(
+            self, dataset_path: str, output_dir: Optional[str] = None
+        ) -> Dict[str, Any]:
+            self.convert_calls.append((dataset_path, output_dir))
+            return {"success": True, "output_path": output_dir or "/tmp/xlabel"}
+
+    marker_processor = object()
+    displayed: Dict[str, Any] = {}
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow",
+        _WorkflowForConvert,
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda *_a, **_k: "")
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_user_confirmed_type",
+        lambda _detected_type, _confidence: "detection",
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_display_result",
+        lambda result: displayed.setdefault("result", result),
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+
+    interface_with_non_exe._yolo_convert_to_xlabel_auto()
+
+    assert len(_WorkflowForConvert.instances) == 1
+    workflow = _WorkflowForConvert.instances[0]
+    assert workflow.processor is marker_processor
+    assert workflow.detect_calls == ["/tmp/yolo-dataset"]
+    assert workflow.convert_calls == [("/tmp/yolo-dataset", None)]
+    assert displayed["result"]["success"] is True
+
+
+def test_yolo_process_xlabel_auto_uses_yolo_workflow_adapter(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    class _WorkflowForXlabel:
+        instances: List["_WorkflowForXlabel"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.detect_calls: List[str] = []
+            self.class_calls: List[str] = []
+            self.convert_calls: List[Tuple[str, Optional[str], Tuple[str, ...]]] = []
+            _WorkflowForXlabel.instances.append(self)
+
+        def detect_xlabel_dataset_type(self, source_dir: str) -> Dict[str, Any]:
+            self.detect_calls.append(source_dir)
+            return {
+                "detected_type": "segmentation",
+                "confidence": 0.9,
+                "statistics": {
+                    "total_shapes": 12,
+                    "detection_like": 0,
+                    "segmentation_like": 12,
+                },
+            }
+
+        def detect_xlabel_segmentation_classes(self, source_dir: str):
+            self.class_calls.append(source_dir)
+            return {"cat", "dog"}
+
+        def convert_xlabel_to_yolo_segmentation(
+            self,
+            source_dir: str,
+            output_dir: Optional[str] = None,
+            class_order: Optional[List[str]] = None,
+        ) -> Dict[str, Any]:
+            self.convert_calls.append((source_dir, output_dir, tuple(class_order or [])))
+            return {"success": True, "output_path": output_dir or "/tmp/yolo-seg"}
+
+    marker_processor = object()
+    displayed: Dict[str, Any] = {}
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow",
+        _WorkflowForXlabel,
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True: "/tmp/xlabel-dataset",
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda *_a, **_k: "")
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_user_confirmed_type",
+        lambda _detected_type, _confidence: "segmentation",
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_class_order_from_user",
+        lambda classes: ["cat", "dog"],
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_display_result",
+        lambda result: displayed.setdefault("result", result),
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+
+    interface_with_non_exe._yolo_process_xlabel_auto()
+
+    assert len(_WorkflowForXlabel.instances) == 1
+    workflow = _WorkflowForXlabel.instances[0]
+    assert workflow.processor is marker_processor
+    assert workflow.detect_calls == ["/tmp/xlabel-dataset"]
+    assert workflow.class_calls == ["/tmp/xlabel-dataset"]
+    assert workflow.convert_calls == [
+        ("/tmp/xlabel-dataset", None, ("cat", "dog"))
+    ]
+    assert displayed["result"]["success"] is True
+
+
+def test_run_xlabel_conversion_uses_yolo_workflow_adapter(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    class _WorkflowForRun:
+        instances: List["_WorkflowForRun"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.class_calls: List[str] = []
+            self.convert_calls: List[Tuple[str, Optional[str], Tuple[str, ...]]] = []
+            _WorkflowForRun.instances.append(self)
+
+        def detect_xlabel_classes(self, source_dir: str):
+            self.class_calls.append(source_dir)
+            return {"cat", "dog"}
+
+        def convert_xlabel_to_yolo(
+            self,
+            source_dir: str,
+            output_dir: Optional[str] = None,
+            class_order: Optional[List[str]] = None,
+        ) -> Dict[str, Any]:
+            self.convert_calls.append((source_dir, output_dir, tuple(class_order or [])))
+            return {"success": True, "output_path": output_dir or "/tmp/yolo"}
+
+    marker_processor = object()
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow",
+        _WorkflowForRun,
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_class_order_from_user",
+        lambda classes: ["cat", "dog"],
+    )
+
+    result = interface_with_non_exe._run_xlabel_conversion(
+        dataset_path="/tmp/xlabel-dataset",
+        output_path=None,
+        mode="detection",
+    )
+
+    assert len(_WorkflowForRun.instances) == 1
+    workflow = _WorkflowForRun.instances[0]
+    assert workflow.processor is marker_processor
+    assert workflow.class_calls == ["/tmp/xlabel-dataset"]
+    assert workflow.convert_calls == [
+        ("/tmp/xlabel-dataset", None, ("cat", "dog"))
+    ]
+    assert result["success"] is True
+
+
+def test_yolo_detection_statistics_uses_yolo_workflow_adapter(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    class _WorkflowForStats:
+        instances: List["_WorkflowForStats"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.calls: List[str] = []
+            _WorkflowForStats.instances.append(self)
+
+        def get_dataset_statistics(self, dataset_path: str) -> Dict[str, Any]:
+            self.calls.append(dataset_path)
+            return {
+                "success": True,
+                "statistics": {
+                    "is_valid": True,
+                    "orphaned_images": 0,
+                    "orphaned_labels": 0,
+                },
+            }
+
+    marker_processor = object()
+    displayed: Dict[str, Any] = {}
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow",
+        _WorkflowForStats,
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_display_result",
+        lambda result: displayed.setdefault("result", result),
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+
+    interface_with_non_exe._yolo_detection_statistics()
+
+    assert len(_WorkflowForStats.instances) == 1
+    workflow = _WorkflowForStats.instances[0]
+    assert workflow.processor is marker_processor
+    assert workflow.calls == ["/tmp/yolo-dataset"]
+    assert displayed["result"]["success"] is True
+
+
+def test_yolo_segmentation_statistics_uses_yolo_workflow_adapter(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    class _WorkflowForSegStats:
+        instances: List["_WorkflowForSegStats"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.calls: List[str] = []
+            _WorkflowForSegStats.instances.append(self)
+
+        def get_dataset_statistics(self, dataset_path: str) -> Dict[str, Any]:
+            self.calls.append(dataset_path)
+            return {
+                "success": True,
+                "statistics": {
+                    "is_valid": True,
+                    "orphaned_images": 0,
+                    "orphaned_labels": 0,
+                },
+            }
+
+    marker_processor = object()
+    displayed: Dict[str, Any] = {}
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow",
+        _WorkflowForSegStats,
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(interface_with_non_exe, "_validate_segmentation_format", lambda _path: [])
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_display_result",
+        lambda result: displayed.setdefault("result", result),
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+
+    interface_with_non_exe._yolo_segmentation_statistics()
+
+    assert len(_WorkflowForSegStats.instances) == 1
+    workflow = _WorkflowForSegStats.instances[0]
+    assert workflow.processor is marker_processor
+    assert workflow.calls == ["/tmp/yolo-dataset"]
+    assert displayed["result"]["success"] is True
+
+
+def test_yolo_clean_unmatched_uses_yolo_workflow_adapter(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    class _WorkflowForClean:
+        instances: List["_WorkflowForClean"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.calls: List[Tuple[str, bool]] = []
+            _WorkflowForClean.instances.append(self)
+
+        def clean_unmatched_files(
+            self,
+            dataset_path: str,
+            dry_run: bool = False,
+        ) -> Dict[str, Any]:
+            self.calls.append((dataset_path, dry_run))
+            return {
+                "success": True,
+                "deleted_files": {
+                    "orphaned_images": [],
+                    "orphaned_labels": [],
+                    "invalid_labels": [],
+                    "empty_labels": [],
+                },
+                "statistics": {
+                    "total_deleted": 0,
+                    "deleted_images": 0,
+                    "deleted_labels": 0,
+                },
+            }
+
+    marker_processor = object()
+    inputs = iter(["y"])
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow",
+        _WorkflowForClean,
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(inputs))
+
+    interface_with_non_exe._yolo_clean_unmatched()
+
+    assert len(_WorkflowForClean.instances) == 1
+    workflow = _WorkflowForClean.instances[0]
+    assert workflow.processor is marker_processor
+    assert workflow.calls == [("/tmp/yolo-dataset", True)]
+
+
+def test_yolo_convert_to_xlabel_auto_displays_detection_failure(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    class _WorkflowDetectFail:
+        def __init__(self, _processor: Any) -> None:
+            pass
+
+        def detect_yolo_dataset_type(self, _dataset_path: str) -> Dict[str, Any]:
+            return {
+                "success": False,
+                "error": "内部处理失败",
+                "error_code": "INTERNAL_ERROR",
+            }
+
+    displayed: Dict[str, Any] = {}
+    printed: List[str] = []
+
+    monkeypatch.setattr("integrated_script.ui.interactive.YoloWorkflow", _WorkflowDetectFail)
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda *_a, **_k: "")
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: object())
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_display_result",
+        lambda result: displayed.setdefault("result", result),
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+    monkeypatch.setattr(
+        "builtins.print",
+        lambda *args, **_kwargs: printed.append(" ".join(str(arg) for arg in args)),
+    )
+
+    interface_with_non_exe._yolo_convert_to_xlabel_auto()
+
+    assert displayed["result"]["success"] is False
+    assert displayed["result"]["error"] == "内部处理失败"
+    assert any("数据集类型检测失败" in line for line in printed)
+    assert not any("未检测到有效标签" in line for line in printed)
+
+
+def test_yolo_process_xlabel_auto_displays_detection_failure(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    class _WorkflowDetectFail:
+        def __init__(self, _processor: Any) -> None:
+            pass
+
+        def detect_xlabel_dataset_type(self, _source_dir: str) -> Dict[str, Any]:
+            return {
+                "success": False,
+                "error": "内部处理失败",
+                "error_code": "INTERNAL_ERROR",
+            }
+
+    displayed: Dict[str, Any] = {}
+    printed: List[str] = []
+
+    monkeypatch.setattr("integrated_script.ui.interactive.YoloWorkflow", _WorkflowDetectFail)
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True: "/tmp/xlabel-dataset",
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda *_a, **_k: "")
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: object())
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_display_result",
+        lambda result: displayed.setdefault("result", result),
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+    monkeypatch.setattr(
+        "builtins.print",
+        lambda *args, **_kwargs: printed.append(" ".join(str(arg) for arg in args)),
+    )
+
+    interface_with_non_exe._yolo_process_xlabel_auto()
+
+    assert displayed["result"]["success"] is False
+    assert displayed["result"]["error"] == "内部处理失败"
+    assert any("数据集类型检测失败" in line for line in printed)
+    assert not any("未检测到有效标注" in line for line in printed)
+
+
+
+
+def test_display_result_delegates_to_presenter(interface_with_non_exe, monkeypatch) -> None:
+    captured: Dict[str, Any] = {}
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.render_result",
+        lambda result: captured.setdefault("result", result),
+    )
+
+    payload = {"success": True, "output_path": "/tmp/out"}
+    interface_with_non_exe._display_result(payload)
+
+    assert captured["result"] == payload
+
+
+def test_file_copy_uses_file_workflow_adapter(interface_with_non_exe, monkeypatch) -> None:
+    class _WorkflowForFileCopy:
+        instances: List["_WorkflowForFileCopy"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.calls: List[Tuple[str, str, bool]] = []
+            _WorkflowForFileCopy.instances.append(self)
+
+        def copy_files(
+            self,
+            source_dir: str,
+            target_dir: str,
+            file_patterns: Optional[List[str]] = None,
+            recursive: bool = False,
+            overwrite: bool = False,
+            preserve_structure: bool = True,
+        ) -> Dict[str, Any]:
+            del file_patterns, overwrite, preserve_structure
+            self.calls.append((source_dir, target_dir, recursive))
+            return {"success": True, "copied_count": 1}
+
+    marker_processor = object()
+
+    monkeypatch.setattr("integrated_script.ui.interactive.FileWorkflow", _WorkflowForFileCopy)
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True: "/tmp/source.jpg"
+        if "源路径" in _prompt
+        else "/tmp/target",
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+
+    interface_with_non_exe._file_copy()
+
+    assert len(_WorkflowForFileCopy.instances) == 1
+    workflow = _WorkflowForFileCopy.instances[0]
+    assert workflow.processor is marker_processor
+    assert workflow.calls == [("/tmp/source.jpg", "/tmp/target", False)]
+
+
+def test_label_create_empty_uses_label_workflow_adapter(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    class _WorkflowForCreateEmpty:
+        instances: List["_WorkflowForCreateEmpty"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.calls: List[Tuple[str, str, bool]] = []
+            _WorkflowForCreateEmpty.instances.append(self)
+
+        def create_empty_labels(
+            self,
+            images_dir: str,
+            labels_dir: Optional[str] = None,
+            overwrite: bool = False,
+        ) -> Dict[str, Any]:
+            self.calls.append((images_dir, labels_dir or "", overwrite))
+            return {"success": True, "created_count": 1}
+
+    marker_processor = object()
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.LabelWorkflow", _WorkflowForCreateEmpty
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True, must_be_dir=True: "/tmp/dataset/images",
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda *_a, **_k: "")
+    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: False)
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+
+    interface_with_non_exe._label_create_empty()
+
+    assert len(_WorkflowForCreateEmpty.instances) == 1
+    workflow = _WorkflowForCreateEmpty.instances[0]
+    assert workflow.processor is marker_processor
+    assert workflow.calls == [(
+        "/tmp/dataset/images",
+        str(Path("/tmp/dataset/images").parent / "labels"),
+        False,
+    )]
+
+
+def test_image_info_uses_image_workflow_adapter(interface_with_non_exe, monkeypatch) -> None:
+    class _WorkflowForImageInfo:
+        instances: List["_WorkflowForImageInfo"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.calls: List[Tuple[str, bool]] = []
+            _WorkflowForImageInfo.instances.append(self)
+
+        def get_image_info(self, image_path: str, recursive: bool = False) -> Dict[str, Any]:
+            self.calls.append((image_path, recursive))
+            return {"success": True, "file_path": image_path}
+
+    marker_processor = object()
+    displayed: Dict[str, Any] = {}
+
+    monkeypatch.setattr("integrated_script.ui.interactive.ImageWorkflow", _WorkflowForImageInfo)
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True: "/tmp/img.jpg",
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_display_enhanced_image_info",
+        lambda result: displayed.setdefault("result", result),
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+
+    interface_with_non_exe._image_info()
+
+    assert len(_WorkflowForImageInfo.instances) == 1
+    workflow = _WorkflowForImageInfo.instances[0]
+    assert workflow.processor is marker_processor
+    assert workflow.calls == [("/tmp/img.jpg", False)]
+    assert displayed["result"]["success"] is True
+
+
+def test_file_workflow_rename_sync_preserves_legacy_defaults() -> None:
+    class _StubFileProcessor:
+        def __init__(self) -> None:
+            self.last_call: Optional[Tuple[str, str, str, int, bool]] = None
+
+        def rename_images_labels_sync(
+            self,
+            images_dir: str,
+            labels_dir: str,
+            prefix: str,
+            digits: int = 5,
+            shuffle_order: bool = False,
+        ) -> Dict[str, Any]:
+            self.last_call = (images_dir, labels_dir, prefix, digits, shuffle_order)
+            return {"success": True, "renamed_count": 1}
+
+    processor = _StubFileProcessor()
+    workflow = FileWorkflow(processor)
+
+    result = workflow.rename_images_labels_sync("/tmp/images", "/tmp/labels", "demo")
+
+    assert processor.last_call == ("/tmp/images", "/tmp/labels", "demo", 5, False)
+    assert result["success"] is True
+
+def test_yolo_merge_datasets_uses_yolo_workflow_adapter(
+    interface_with_non_exe, monkeypatch, tmp_path
+) -> None:
+    class _WorkflowForMerge:
+        instances: List["_WorkflowForMerge"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.validate_calls: List[List[Path]] = []
+            self.generate_calls: List[Tuple[List[str], List[Path]]] = []
+            self.merge_calls: List[Tuple[List[Path], str, Optional[str], Optional[str]]] = []
+            _WorkflowForMerge.instances.append(self)
+
+        def validate_classes_consistency(self, dataset_paths: List[Path]) -> Dict[str, Any]:
+            self.validate_calls.append(dataset_paths)
+            return {"consistent": True, "classes": ["cat", "dog"]}
+
+        def generate_output_name(self, classes: List[str], dataset_paths: List[Path]) -> str:
+            self.generate_calls.append((classes, dataset_paths))
+            return "merged-cat-dog"
+
+        def merge_datasets(
+            self,
+            dataset_paths: List[Path],
+            output_path: str,
+            output_name: Optional[str] = None,
+            image_prefix: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            self.merge_calls.append((dataset_paths, output_path, output_name, image_prefix))
+            return {
+                "success": True,
+                "output_path": "/tmp/merged",
+                "total_images": 2,
+                "total_labels": 2,
+                "classes": ["cat", "dog"],
+                "merged_datasets": 2,
+            }
+
+    d1 = tmp_path / "d1"
+    d2 = tmp_path / "d2"
+    d1.mkdir()
+    d2.mkdir()
+
+    marker_processor = object()
+    inputs = iter([str(d1), str(d2), "", "", "", "", "y"])
+
+    monkeypatch.setattr("integrated_script.ui.interactive.YoloWorkflow", _WorkflowForMerge)
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(inputs))
+
+    interface_with_non_exe._yolo_merge_datasets()
+
+    assert len(_WorkflowForMerge.instances) == 1
+    workflow = _WorkflowForMerge.instances[0]
+    assert workflow.processor is marker_processor
+    assert len(workflow.validate_calls) == 1
+    assert len(workflow.generate_calls) == 1
+    assert len(workflow.merge_calls) == 1
+    assert workflow.merge_calls[0][1] == "."
+
+
+def test_yolo_merge_different_datasets_uses_yolo_workflow_adapter(
+    interface_with_non_exe, monkeypatch, tmp_path
+) -> None:
+    class _WorkflowForDiffMerge:
+        instances: List["_WorkflowForDiffMerge"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.collect_calls: List[List[Path]] = []
+            self.mapping_calls: List[List[Dict[str, Any]]] = []
+            self.generate_calls: List[Tuple[List[str], List[Path]]] = []
+            self.merge_calls: List[Tuple[List[str], str, Optional[str], Optional[str], Optional[List[int]]]] = []
+            _WorkflowForDiffMerge.instances.append(self)
+
+        def collect_all_classes_info(self, dataset_paths: List[Path]) -> List[Dict[str, Any]]:
+            self.collect_calls.append(dataset_paths)
+            return [
+                {"dataset_path": dataset_paths[0], "classes": ["cat"]},
+                {"dataset_path": dataset_paths[1], "classes": ["dog"]},
+            ]
+
+        def create_unified_class_mapping(
+            self, all_classes_info: List[Dict[str, Any]]
+        ) -> Tuple[List[str], List[Dict[int, int]]]:
+            self.mapping_calls.append(all_classes_info)
+            return ["cat", "dog"], [{0: 0}, {0: 1}]
+
+        def generate_different_output_name(
+            self,
+            unified_classes: List[str],
+            dataset_paths: List[Path],
+        ) -> str:
+            self.generate_calls.append((unified_classes, dataset_paths))
+            return "merged-diff"
+
+        def merge_different_type_datasets(
+            self,
+            dataset_paths: List[str],
+            output_path: str,
+            output_name: Optional[str] = None,
+            image_prefix: Optional[str] = None,
+            dataset_order: Optional[List[int]] = None,
+        ) -> Dict[str, Any]:
+            self.merge_calls.append(
+                (dataset_paths, output_path, output_name, image_prefix, dataset_order)
+            )
+            return {
+                "success": True,
+                "output_path": "/tmp/merged-diff",
+                "total_images": 2,
+                "total_labels": 2,
+                "unified_classes": ["cat", "dog"],
+                "merged_datasets": 2,
+                "statistics": [],
+            }
+
+    d1 = tmp_path / "d1"
+    d2 = tmp_path / "d2"
+    d1.mkdir()
+    d2.mkdir()
+
+    marker_processor = object()
+    inputs = iter([str(d1), str(d2), "", "n", "", "", "", "y"])
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow", _WorkflowForDiffMerge
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(inputs))
+
+    interface_with_non_exe._yolo_merge_different_datasets()
+
+    assert len(_WorkflowForDiffMerge.instances) == 1
+    workflow = _WorkflowForDiffMerge.instances[0]
+    assert workflow.processor is marker_processor
+    assert len(workflow.collect_calls) == 1
+    assert len(workflow.mapping_calls) == 1
+    assert len(workflow.generate_calls) == 1
+    assert len(workflow.merge_calls) == 1
+    assert workflow.merge_calls[0][1] == "."
+
+
+def test_file_delete_json_recursive_uses_file_workflow_adapter(
+    interface_with_non_exe, monkeypatch, tmp_path
+) -> None:
+    class _WorkflowForDeleteJson:
+        instances: List["_WorkflowForDeleteJson"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.calls: List[Tuple[str, bool]] = []
+            _WorkflowForDeleteJson.instances.append(self)
+
+        def delete_json_files_recursive(
+            self,
+            target_dir: str,
+            dry_run: bool = False,
+        ) -> Dict[str, Any]:
+            self.calls.append((target_dir, dry_run))
+            if dry_run:
+                return {
+                    "success": True,
+                    "target_dir": target_dir,
+                    "dry_run": True,
+                    "json_files": [str(Path(target_dir) / "a.json")],
+                    "statistics": {"total_files": 1, "deleted_count": 0, "failed_count": 0},
+                }
+            return {
+                "success": True,
+                "target_dir": target_dir,
+                "dry_run": False,
+                "json_files": [str(Path(target_dir) / "a.json")],
+                "failed_files": [],
+                "statistics": {"total_files": 1, "deleted_count": 1, "failed_count": 0},
+            }
+
+    target_dir = tmp_path / "json-dir"
+    target_dir.mkdir()
+    marker_processor = object()
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.FileWorkflow", _WorkflowForDeleteJson
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True, must_be_dir=True: str(target_dir),
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: True)
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+
+    interface_with_non_exe._file_delete_json_recursive()
+
+    assert len(_WorkflowForDeleteJson.instances) == 1
+    workflow = _WorkflowForDeleteJson.instances[0]
+    assert workflow.processor is marker_processor
+    assert workflow.calls == [(str(target_dir), True), (str(target_dir), False)]

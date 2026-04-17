@@ -348,6 +348,135 @@ class FileProcessor(BaseProcessor):
         except Exception as e:
             raise ProcessingError(f"文件移动失败: {str(e)}")
 
+    def organize_by_extension(
+        self,
+        source_dir: str,
+        output_dir: Optional[str] = None,
+        copy_files: bool = False,
+    ) -> Dict[str, Any]:
+        """按扩展名组织文件（仅处理源目录下的一级文件）。"""
+        try:
+            source_path = validate_path(source_dir, must_exist=True, must_be_dir=True)
+            target_path = (
+                validate_path(output_dir, must_exist=False) if output_dir else source_path
+            )
+            create_directory(target_path)
+
+            files_to_organize = [p for p in source_path.iterdir() if p.is_file()]
+
+            result: Dict[str, Any] = {
+                "success": True,
+                "source_dir": str(source_path),
+                "target_dir": str(target_path),
+                "copy_files": copy_files,
+                "organized_files": [],
+                "failed_files": [],
+                "statistics": {
+                    "total_files": len(files_to_organize),
+                    "copied_count": 0,
+                    "moved_count": 0,
+                    "failed_count": 0,
+                },
+            }
+
+            def organize_single_file(file_path: Path) -> Dict[str, Any]:
+                try:
+                    suffix = file_path.suffix.lower().lstrip(".")
+                    ext_folder = suffix if suffix else "no_extension"
+                    ext_dir = target_path / ext_folder
+                    create_directory(ext_dir)
+
+                    target_file = ext_dir / file_path.name
+                    if target_file.exists():
+                        target_file = get_unique_filename(target_file.parent, target_file.name)
+
+                    if copy_files:
+                        copy_file_safe(file_path, target_file)
+                        action = "copied"
+                    else:
+                        move_file_safe(file_path, target_file)
+                        action = "moved"
+
+                    return {
+                        "success": True,
+                        "action": action,
+                        "source_file": str(file_path),
+                        "target_file": str(target_file),
+                    }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "action": "failed",
+                        "source_file": str(file_path),
+                        "error": str(e),
+                    }
+
+            organize_results = process_with_progress(
+                files_to_organize, organize_single_file, "按扩展名组织文件"
+            )
+
+            for organize_result in organize_results:
+                if not organize_result:
+                    continue
+                if organize_result["success"]:
+                    result["organized_files"].append(organize_result)
+                    if organize_result["action"] == "copied":
+                        result["statistics"]["copied_count"] += 1
+                    else:
+                        result["statistics"]["moved_count"] += 1
+                else:
+                    result["failed_files"].append(organize_result)
+                    result["statistics"]["failed_count"] += 1
+                    result["success"] = False
+
+            self.logger.info(f"按扩展名组织完成: {result['statistics']}")
+            return result
+
+        except Exception as e:
+            raise ProcessingError(f"按扩展名组织失败: {str(e)}")
+
+    def delete_json_files_recursive(
+        self,
+        target_dir: str,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """递归扫描并删除目录中的 JSON 文件。"""
+        try:
+            target_path = validate_path(target_dir, must_exist=True, must_be_dir=True)
+            json_files = [p for p in target_path.rglob("*.json") if p.is_file()]
+
+            result: Dict[str, Any] = {
+                "success": True,
+                "target_dir": str(target_path),
+                "dry_run": dry_run,
+                "json_files": [str(p) for p in json_files],
+                "failed_files": [],
+                "statistics": {
+                    "total_files": len(json_files),
+                    "deleted_count": 0,
+                    "failed_count": 0,
+                },
+            }
+
+            if dry_run:
+                return result
+
+            for json_file in json_files:
+                try:
+                    json_file.unlink()
+                    result["statistics"]["deleted_count"] += 1
+                except Exception as e:
+                    result["failed_files"].append(
+                        {"file": str(json_file), "error": str(e)}
+                    )
+                    result["statistics"]["failed_count"] += 1
+                    result["success"] = False
+
+            return result
+
+        except Exception as e:
+            raise ProcessingError(f"递归删除JSON文件失败: {str(e)}")
+
     def move_images_by_count(
         self,
         source_dir: str,

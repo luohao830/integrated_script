@@ -22,8 +22,9 @@ from ..processors import (
     LabelProcessor,
     YOLOProcessor,
 )
-from ..workflows import YoloWorkflow
+from ..workflows import FileWorkflow, ImageWorkflow, LabelWorkflow, YoloWorkflow
 from .menu import MenuSystem
+from .presenters import render_result
 
 
 class InteractiveInterface:
@@ -234,7 +235,14 @@ class InteractiveInterface:
                 output_path = None
 
             processor = self._get_processor("yolo")
-            detection = processor.detect_yolo_dataset_type(dataset_path)
+            workflow = YoloWorkflow(processor)
+            detection = workflow.detect_yolo_dataset_type(dataset_path)
+            if not detection.get("success", True):
+                print("\n❌ 数据集类型检测失败")
+                self._display_result(detection)
+                self._pause()
+                return
+
             detected_type = detection.get("detected_type", "unknown")
             confidence = float(detection.get("confidence", 0.0))
             stats = detection.get("statistics", {})
@@ -258,12 +266,12 @@ class InteractiveInterface:
 
             if confirmed_type == "segmentation":
                 print("\n正在转换为X-label分割格式...")
-                result = processor.convert_yolo_to_xlabel_segmentation(
+                result = workflow.convert_yolo_to_xlabel_segmentation(
                     dataset_path, output_dir=output_path
                 )
             else:
                 print("\n正在转换为X-label检测格式...")
-                result = processor.convert_yolo_to_xlabel(
+                result = workflow.convert_yolo_to_xlabel(
                     dataset_path, output_dir=output_path
                 )
 
@@ -292,7 +300,14 @@ class InteractiveInterface:
                 output_path = None
 
             processor = self._get_processor("yolo")
-            detection = processor.detect_xlabel_dataset_type(dataset_path)
+            workflow = YoloWorkflow(processor)
+            detection = workflow.detect_xlabel_dataset_type(dataset_path)
+            if not detection.get("success", True):
+                print("\n❌ 数据集类型检测失败")
+                self._display_result(detection)
+                self._pause()
+                return
+
             detected_type = detection.get("detected_type", "unknown")
             confidence = float(detection.get("confidence", 0.0))
             stats = detection.get("statistics", {})
@@ -315,7 +330,10 @@ class InteractiveInterface:
                 return
 
             result = self._run_xlabel_conversion(
-                dataset_path, output_path, confirmed_type
+                dataset_path,
+                output_path,
+                confirmed_type,
+                workflow=workflow,
             )
             self._display_result(result)
         except Exception as e:
@@ -328,12 +346,15 @@ class InteractiveInterface:
         dataset_path: str,
         output_path: Optional[str],
         mode: str,
+        workflow: Optional[YoloWorkflow] = None,
     ) -> Dict[str, Any]:
         """执行X-label转换（检测/分割）"""
-        processor = self._get_processor("yolo")
+        if workflow is None:
+            processor = self._get_processor("yolo")
+            workflow = YoloWorkflow(processor)
 
         if mode == "segmentation":
-            classes = processor.detect_xlabel_segmentation_classes(dataset_path)
+            classes = workflow.detect_xlabel_segmentation_classes(dataset_path)
             if not classes:
                 raise ValueError("未检测到任何类别")
 
@@ -344,13 +365,13 @@ class InteractiveInterface:
                 print(f"  {i}: {c}")
 
             print("\n正在转换X-label分割数据集...")
-            return processor.convert_xlabel_to_yolo_segmentation(
+            return workflow.convert_xlabel_to_yolo_segmentation(
                 dataset_path,
                 output_dir=output_path,
                 class_order=final_classes,
             )
 
-        classes = processor.detect_xlabel_classes(dataset_path)
+        classes = workflow.detect_xlabel_classes(dataset_path)
         if not classes:
             raise ValueError("未检测到任何类别")
 
@@ -361,7 +382,7 @@ class InteractiveInterface:
             print(f"  {i}: {c}")
 
         print("\n正在转换X-label数据集...")
-        return processor.convert_xlabel_to_yolo(
+        return workflow.convert_xlabel_to_yolo(
             dataset_path, output_dir=output_path, class_order=final_classes
         )
 
@@ -487,6 +508,7 @@ class InteractiveInterface:
             dataset_path = self._get_path_input("请输入数据集路径: ", must_exist=True)
 
             processor = self._get_processor("yolo")
+            workflow = YoloWorkflow(processor)
 
             # 路径验证和提示
             path_obj = Path(dataset_path)
@@ -495,7 +517,7 @@ class InteractiveInterface:
                 print("   系统将自动查找数据集根目录...")
 
             print("\n正在验证数据集...")
-            result = processor.get_dataset_statistics(dataset_path)
+            result = workflow.get_dataset_statistics(dataset_path)
 
             self._display_result(result)
 
@@ -518,7 +540,7 @@ class InteractiveInterface:
 
                         # 先进行试运行
                         print("\n正在分析需要清理的文件...")
-                        clean_result = processor.clean_unmatched_files(
+                        clean_result = workflow.clean_unmatched_files(
                             dataset_path, dry_run=True
                         )
 
@@ -561,7 +583,7 @@ class InteractiveInterface:
                             )
                             if confirm in ["", "y", "yes", "是"]:
                                 print("\n正在删除文件...")
-                                final_result = processor.clean_unmatched_files(
+                                final_result = workflow.clean_unmatched_files(
                                     dataset_path, dry_run=False
                                 )
 
@@ -570,7 +592,7 @@ class InteractiveInterface:
 
                                 # 重新验证数据集
                                 print("\n重新验证数据集...")
-                                updated_result = processor.get_dataset_statistics(
+                                updated_result = workflow.get_dataset_statistics(
                                     dataset_path
                                 )
                                 print("\n=== 清理后的验证结果 ===")
@@ -597,6 +619,7 @@ class InteractiveInterface:
             dataset_path = self._get_path_input("请输入数据集路径: ", must_exist=True)
 
             processor = self._get_processor("yolo")
+            workflow = YoloWorkflow(processor)
 
             # 路径验证和提示
             path_obj = Path(dataset_path)
@@ -607,7 +630,7 @@ class InteractiveInterface:
             print("\n正在验证分割数据集...")
 
             # 首先进行常规数据集验证
-            result = processor.get_dataset_statistics(dataset_path)
+            result = workflow.get_dataset_statistics(dataset_path)
             self._display_result(result)
 
             # 进行分割数据集特定验证
@@ -655,7 +678,7 @@ class InteractiveInterface:
 
                         # 先进行试运行
                         print("\n正在分析需要清理的文件...")
-                        clean_result = processor.clean_unmatched_files(
+                        clean_result = workflow.clean_unmatched_files(
                             dataset_path, dry_run=True
                         )
 
@@ -698,7 +721,7 @@ class InteractiveInterface:
                             )
                             if confirm in ["", "y", "yes", "是"]:
                                 print("\n正在删除文件...")
-                                final_result = processor.clean_unmatched_files(
+                                final_result = workflow.clean_unmatched_files(
                                     dataset_path, dry_run=False
                                 )
 
@@ -707,7 +730,7 @@ class InteractiveInterface:
 
                                 # 重新验证数据集
                                 print("\n重新验证数据集...")
-                                updated_result = processor.get_dataset_statistics(
+                                updated_result = workflow.get_dataset_statistics(
                                     dataset_path
                                 )
                                 print("\n=== 清理后的验证结果 ===")
@@ -870,10 +893,11 @@ class InteractiveInterface:
             dry_run = dry_run_choice in ["y", "yes", "是"]
 
             processor = self._get_processor("yolo")
+            workflow = YoloWorkflow(processor)
 
             if dry_run:
                 print("\n正在进行试运行...")
-                result = processor.clean_unmatched_files(dataset_path, dry_run=True)
+                result = workflow.clean_unmatched_files(dataset_path, dry_run=True)
 
                 print("\n=== 试运行结果 ===")
                 total_files = sum(
@@ -941,7 +965,7 @@ class InteractiveInterface:
                     confirm = input("\n确认要删除这些文件吗？(y/N): ").strip().lower()
                     if confirm in ["y", "yes", "是"]:
                         print("\n正在删除文件...")
-                        result = processor.clean_unmatched_files(
+                        result = workflow.clean_unmatched_files(
                             dataset_path, dry_run=False
                         )
                         self._display_clean_result(result)
@@ -954,7 +978,7 @@ class InteractiveInterface:
                 )
                 if confirm in ["y", "yes", "是"]:
                     print("\n正在清理文件...")
-                    result = processor.clean_unmatched_files(
+                    result = workflow.clean_unmatched_files(
                         dataset_path, dry_run=False
                     )
                     self._display_clean_result(result)
@@ -1122,11 +1146,12 @@ class InteractiveInterface:
                 image_prefix = None
 
             processor = self._get_processor("yolo")
+            workflow = YoloWorkflow(processor)
 
             # 先验证classes.txt一致性
             print("\n正在验证数据集兼容性...")
             path_objects = [Path(path) for path in dataset_paths]
-            validation_result = processor._validate_classes_consistency(path_objects)
+            validation_result = workflow.validate_classes_consistency(path_objects)
 
             if not validation_result["consistent"]:
                 print(f"❌ 数据集验证失败: {validation_result['details']}")
@@ -1139,7 +1164,7 @@ class InteractiveInterface:
 
             # 生成输出目录名称预览
             if not output_dir:
-                suggested_name = processor._generate_output_name(
+                suggested_name = workflow.generate_output_name(
                     classes=validation_result["classes"], dataset_paths=path_objects
                 )
                 print(f"建议输出目录名: {suggested_name}")
@@ -1170,7 +1195,7 @@ class InteractiveInterface:
 
             # 执行合并
             print("\n正在合并数据集...")
-            result = processor.merge_datasets(
+            result = workflow.merge_datasets(
                 dataset_paths=path_objects,
                 output_path=output_path,
                 output_name=output_dir,
@@ -1250,10 +1275,11 @@ class InteractiveInterface:
 
             # 显示数据集类别信息
             processor = self._get_processor("yolo")
+            workflow = YoloWorkflow(processor)
             path_objects = [Path(path) for path in dataset_paths]
 
             print("\n=== 数据集类别信息 ===")
-            all_classes_info = processor._collect_all_classes_info(path_objects)
+            all_classes_info = workflow.collect_all_classes_info(path_objects)
 
             for i, info in enumerate(all_classes_info):
                 print(f"数据集 {i+1}: {info['dataset_path'].name}")
@@ -1338,7 +1364,7 @@ class InteractiveInterface:
 
             # 预览统一类别映射
             print("\n正在分析类别映射...")
-            unified_classes, class_mappings = processor._create_unified_class_mapping(all_classes_info)
+            unified_classes, class_mappings = workflow.create_unified_class_mapping(all_classes_info)
 
             print("\n=== 统一类别映射预览 ===")
             print(f"合并后总类别数: {len(unified_classes)}")
@@ -1359,7 +1385,7 @@ class InteractiveInterface:
 
             # 生成输出目录名称预览
             if not output_dir:
-                suggested_name = processor._generate_different_output_name(
+                suggested_name = workflow.generate_different_output_name(
                     unified_classes=unified_classes, dataset_paths=path_objects
                 )
                 print(f"\n建议输出目录名: {suggested_name}")
@@ -1395,14 +1421,13 @@ class InteractiveInterface:
 
             # 执行合并
             print("\n正在合并不同类型数据集...")
-            result = processor.merge_different_type_datasets(
+            result = workflow.merge_different_type_datasets(
                 dataset_paths=dataset_paths,
                 output_path=output_path,
                 output_name=output_dir,
                 image_prefix=image_prefix,
                 dataset_order=dataset_order,
             )
-
             # 显示结果
             if result["success"]:
                 print("\n✅ 不同类型数据集合并成功！")
@@ -1517,9 +1542,10 @@ class InteractiveInterface:
             )
 
             processor = self._get_processor("image")
+            workflow = ImageWorkflow(processor)
 
             print("\n正在转换图像格式...")
-            result = processor.convert_format(
+            result = workflow.convert_format(
                 input_path,
                 target_format,
                 output_path=output_path if output_path else None,
@@ -1591,9 +1617,10 @@ class InteractiveInterface:
             )
 
             processor = self._get_processor("image")
+            workflow = ImageWorkflow(processor)
 
             print("\n正在调整图像尺寸...")
-            result = processor.resize_images(
+            result = workflow.resize_images(
                 input_path,
                 output_path,
                 target_size=size,
@@ -1626,9 +1653,10 @@ class InteractiveInterface:
                 recursive = self._get_yes_no_input("是否递归处理子目录?", default=True)
 
             processor = self._get_processor("image")
+            workflow = ImageWorkflow(processor)
 
             print("\n正在获取图像信息...")
-            result = processor.get_image_info(image_path, recursive=recursive)
+            result = workflow.get_image_info(image_path, recursive=recursive)
 
             # 增强显示效果
             self._display_enhanced_image_info(result)
@@ -1655,14 +1683,16 @@ class InteractiveInterface:
             extensions = None
 
             processor = self._get_processor("image")
+            workflow = ImageWorkflow(processor)
 
             print("\n正在尝试用 OpenCV 读取图像，若读取失败将重新保存...")
-            result = processor.repair_images_with_opencv(
+            result = workflow.repair_images_with_opencv(
                 directory,
                 extensions=extensions,
                 recursive=recursive,
                 include_hidden=False,
             )
+
 
             total = result.get("total_files", 0)
             loaded = result.get("loaded_without_issue", 0)
@@ -1971,6 +2001,7 @@ class InteractiveInterface:
 
             # 统计图片数量
             processor = self._get_processor("image")
+            workflow = ImageWorkflow(processor)
             print("\n正在统计图片数量...")
 
             if Path(input_path).is_file():
@@ -2032,7 +2063,7 @@ class InteractiveInterface:
             print()
 
             # 使用多进程分批处理
-            result = processor.compress_images_multiprocess_batch(
+            result = workflow.compress_images_multiprocess_batch(
                 input_dir=input_path,
                 output_dir=output_path if output_path else None,
                 quality=quality,
@@ -2109,9 +2140,10 @@ class InteractiveInterface:
             copy_files = self._get_yes_no_input("是否复制文件而不是移动? (y/n): ")
 
             processor = self._get_processor("file")
+            workflow = FileWorkflow(processor)
 
             print("\n正在组织文件...")
-            result = processor.organize_by_extension(
+            result = workflow.organize_by_extension(
                 source_dir,
                 output_dir=output_dir if output_dir else None,
                 copy_files=copy_files,
@@ -2141,9 +2173,10 @@ class InteractiveInterface:
                 recursive = self._get_yes_no_input("是否递归复制? (y/n): ")
 
             processor = self._get_processor("file")
+            workflow = FileWorkflow(processor)
 
             print("\n正在复制文件...")
-            result = processor.copy_files(source_path, dest_path, recursive=recursive)
+            result = workflow.copy_files(source_path, dest_path, recursive=recursive)
 
             self._display_result(result)
 
@@ -2169,9 +2202,10 @@ class InteractiveInterface:
                 recursive = self._get_yes_no_input("是否递归移动? (y/n): ")
 
             processor = self._get_processor("file")
+            workflow = FileWorkflow(processor)
 
             print("\n正在移动文件...")
-            result = processor.move_files(source_path, dest_path, recursive=recursive)
+            result = workflow.move_files(source_path, dest_path, recursive=recursive)
 
             self._display_result(result)
 
@@ -2207,9 +2241,10 @@ class InteractiveInterface:
             overwrite = self._get_yes_no_input("目标存在同名文件时覆盖? (y/n): ")
 
             processor = self._get_processor("file")
+            workflow = FileWorkflow(processor)
 
             print("\n正在移动图片...")
-            result = processor.move_images_by_count(
+            result = workflow.move_images_by_count(
                 source_path, dest_path, count=count, overwrite=overwrite
             )
 
@@ -2277,9 +2312,10 @@ class InteractiveInterface:
                 return
 
             processor = self._get_processor("file")
+            workflow = FileWorkflow(processor)
 
             print("\n正在同步重命名images和labels文件...")
-            result = processor.rename_images_labels_sync(
+            result = workflow.rename_images_labels_sync(
                 str(images_dir), str(labels_dir), prefix, 0, shuffle_order
             )
 
@@ -2379,9 +2415,10 @@ class InteractiveInterface:
                 return
 
             processor = self._get_processor("file")
+            workflow = FileWorkflow(processor)
 
             print("\n正在重命名文件...")
-            result = processor.rename_files_with_temp(
+            result = workflow.rename_files_with_temp(
                 source_dir, pattern, shuffle_order=shuffle_order
             )
 
@@ -2459,9 +2496,10 @@ class InteractiveInterface:
                 return
 
             processor = self._get_processor("file")
+            workflow = FileWorkflow(processor)
 
             print("\n正在同步重命名images和labels文件...")
-            result = processor.rename_images_labels_sync(
+            result = workflow.rename_images_labels_sync(
                 str(images_dir), str(labels_dir), prefix, digits, shuffle_order
             )
 
@@ -2485,61 +2523,61 @@ class InteractiveInterface:
                 "请输入目标目录: ", must_exist=True, must_be_dir=True
             )
 
-            # 先扫描目录，统计JSON文件数量
-            json_files = []
-            target_path = Path(target_dir)
+            processor = self._get_processor("file")
+            workflow = FileWorkflow(processor)
 
             print("\n正在扫描目录...")
-            for json_file in target_path.rglob("*.json"):
-                if json_file.is_file():
-                    json_files.append(json_file)
+            preview_result = workflow.delete_json_files_recursive(target_dir, dry_run=True)
+            json_files = preview_result.get("json_files", [])
+            total_files = int(preview_result.get("statistics", {}).get("total_files", 0))
 
-            if not json_files:
+            if total_files == 0:
                 print("\n未找到任何JSON文件")
                 self._pause()
                 return
 
-            print(f"\n找到 {len(json_files)} 个JSON文件:")
-
-            # 显示前10个文件作为预览
+            print(f"\n找到 {total_files} 个JSON文件:")
+            target_path = Path(target_dir)
             for i, json_file in enumerate(json_files[:10]):
-                print(f"  {i+1}. {json_file.relative_to(target_path)}")
+                json_path = Path(json_file)
+                try:
+                    display_path = json_path.relative_to(target_path)
+                except Exception:
+                    display_path = json_path
+                print(f"  {i+1}. {display_path}")
 
-            if len(json_files) > 10:
-                print(f"  ... 还有 {len(json_files) - 10} 个文件")
+            if total_files > 10:
+                print(f"  ... 还有 {total_files - 10} 个文件")
 
-            # 确认删除
             if not self._get_yes_no_input(
-                f"\n警告: 此操作将永久删除 {len(json_files)} 个JSON文件，是否继续? (y/n): "
+                f"\n警告: 此操作将永久删除 {total_files} 个JSON文件，是否继续? (y/n): "
             ):
                 print("操作已取消")
                 return
 
-            # 执行删除
-            deleted_count = 0
-            failed_files = []
-
             print("\n正在删除JSON文件...")
-            for json_file in json_files:
-                try:
-                    json_file.unlink()
-                    deleted_count += 1
-                    if deleted_count % 10 == 0 or deleted_count == len(json_files):
-                        print(f"已删除 {deleted_count}/{len(json_files)} 个文件")
-                except Exception as e:
-                    failed_files.append((json_file, str(e)))
+            result = workflow.delete_json_files_recursive(target_dir, dry_run=False)
+            stats = result.get("statistics", {})
+            deleted_count = int(stats.get("deleted_count", 0))
+            failed_count = int(stats.get("failed_count", 0))
 
-            # 显示结果
             print("\n删除完成!")
             print(f"成功删除: {deleted_count} 个文件")
 
-            if failed_files:
-                print(f"删除失败: {len(failed_files)} 个文件")
+            failed_files = result.get("failed_files", [])
+            if failed_count > 0:
+                print(f"删除失败: {failed_count} 个文件")
                 print("\n失败的文件:")
-                for failed_file, error in failed_files[:5]:  # 只显示前5个失败的文件
-                    print(f"  {failed_file.relative_to(target_path)}: {error}")
-                if len(failed_files) > 5:
-                    print(f"  ... 还有 {len(failed_files) - 5} 个失败的文件")
+                for failed_item in failed_files[:5]:
+                    failed_file = failed_item.get("file", "未知文件")
+                    error = failed_item.get("error", "未知错误")
+                    try:
+                        display_failed = Path(failed_file).relative_to(target_path)
+                    except Exception:
+                        display_failed = failed_file
+                    print(f"  {display_failed}: {error}")
+                if failed_count > 5:
+                    print(f"  ... 还有 {failed_count - 5} 个失败的文件")
 
         except UserInterruptError:
             print("\n删除失败: 用户中断操作 (Code: USER_INTERRUPT)")
@@ -2585,9 +2623,10 @@ class InteractiveInterface:
             )
 
             processor = self._get_processor("label")
+            workflow = LabelWorkflow(processor)
 
             print("\n正在创建空标签文件...")
-            result = processor.create_empty_labels(
+            result = workflow.create_empty_labels(
                 images_dir,
                 labels_dir=labels_dir if labels_dir else str(default_labels_dir),
                 overwrite=overwrite,
@@ -2621,9 +2660,10 @@ class InteractiveInterface:
             backup = self._get_yes_no_input("是否备份原文件?", default=True)
 
             processor = self._get_processor("label")
+            workflow = LabelWorkflow(processor)
 
             print("\n正在翻转标签坐标...")
-            result = processor.flip_labels(
+            result = workflow.flip_labels(
                 labels_dir, flip_type=flip_type, backup=backup
             )
 
@@ -2658,9 +2698,10 @@ class InteractiveInterface:
             backup = self._get_yes_no_input("是否备份原文件?", default=True)
 
             processor = self._get_processor("label")
+            workflow = LabelWorkflow(processor)
 
             print("\n正在过滤标签类别...")
-            result = processor.filter_labels_by_class(
+            result = workflow.filter_labels_by_class(
                 labels_dir, target_classes=classes, action=action, backup=backup
             )
 
@@ -2698,9 +2739,10 @@ class InteractiveInterface:
                 return
 
             processor = self._get_processor("label")
+            workflow = LabelWorkflow(processor)
 
             print("\n正在删除空标签及对应图像...")
-            result = processor.remove_empty_labels_and_images(
+            result = workflow.remove_empty_labels_and_images(
                 dataset_dir, images_subdir=images_dir, labels_subdir=labels_dir
             )
 
@@ -2777,9 +2819,10 @@ class InteractiveInterface:
                 return
 
             processor = self._get_processor("label")
+            workflow = LabelWorkflow(processor)
 
             print(f"\n正在删除只包含类别{target_class}({class_name})的标签及图像...")
-            result = processor.remove_labels_with_only_class(
+            result = workflow.remove_labels_with_only_class(
                 dataset_dir,
                 target_class=target_class,
                 images_subdir=images_dir,
@@ -3769,142 +3812,7 @@ image:
 
     def _display_result(self, result: Dict[str, Any]) -> None:
         """显示结果"""
-        # 字段名中英文映射
-        field_translations = {
-            "total_images": "总图像数",
-            "total_labels": "总标签数",
-            "matched_pairs": "匹配对数",
-            "orphaned_images": "孤立图像",
-            "orphaned_labels": "孤立标签",
-            "invalid_labels": "无效标签",
-            "empty_labels": "空标签",
-            "dataset_path": "数据集路径",
-            "is_valid": "数据集有效性",
-            "has_classes_file": "包含类别文件",
-            "num_classes": "类别数量",
-            "class_names": "类别名称",
-            "total_processed": "总处理文件数",
-            "invalid_removed": "无效文件数",
-            "final_count": "有效文件数",
-            "input_path": "输入路径",
-            "output_path": "输出路径",
-            "project_name": "项目名称",
-            "valid": "数据集有效",
-            "classes_file": "类别文件路径",
-            # 图像处理相关字段
-            "total_files": "总文件数",
-            "converted_count": "转换成功数",
-            "failed_count": "重命名失败数",
-            "target_class_only_labels": "仅包含目标类别的标签数",
-            "removed_images": "删除的图像数",
-            "removed_labels": "删除的标签数",
-            "dataset_dir": "数据集目录",
-            "images_dir": "图像目录",
-            "labels_dir": "标签目录",
-            "target_class": "目标类别",
-            "total_input_size": "输入总大小",
-            "total_output_size": "输出总大小",
-            "total_input_size_formatted": "输入总大小",
-            "total_output_size_formatted": "输出总大小",
-            "overall_compression_ratio": "总体压缩比",
-            "input_dir": "输入目录",
-            "output_dir": "输出目录",
-            "target_format": "目标格式",
-            "quality": "图像质量",
-            "resized_count": "调整成功数",
-            "target_size": "目标尺寸",
-            "maintain_aspect_ratio": "保持宽高比",
-            "copied_count": "复制成功数",
-            "moved_count": "移动成功数",
-            "deleted_count": "删除成功数",
-            "renamed_count": "重命名成功数",
-            # 重命名功能相关字段
-            "total_pairs": "总文件对数",
-            "rename_pattern": "重命名模式",
-            "shuffle_order": "打乱顺序",
-            "preview_only": "仅预览",
-            "target_dir": "目标目录",
-            "prefix": "文件前缀",
-            "digits": "数字位数",
-            # 图像信息相关字段
-            "file_path": "文件路径",
-            "file_size": "文件大小(字节)",
-            "file_size_formatted": "文件大小",
-            "format": "图像格式",
-            "width": "宽度",
-            "height": "高度",
-            "aspect_ratio": "宽高比",
-            "total_pixels": "总像素数",
-            "mode": "颜色模式",
-            "has_transparency": "包含透明度",
-        }
-
-        print("\n" + "=" * 50)
-
-        # 检查是否为统计信息结果
-        is_statistics_result = (
-            "statistics" in result
-            and isinstance(result["statistics"], dict)
-            and "dataset_path" in result["statistics"]
-            and "is_valid" in result["statistics"]
-        )
-
-        if is_statistics_result:
-            # 这是统计信息结果
-            if result["statistics"].get("is_valid", False):
-                print("✓ 数据集验证通过")
-            else:
-                print("⚠ 数据集存在问题")
-        elif result.get("success", False):
-            print("✓ 操作成功完成")
-        else:
-            # 对于统计信息结果，不显示操作失败
-            if not is_statistics_result:
-                print("✗ 操作失败")
-                if "message" in result:
-                    print(f"错误信息: {result['message']}")
-
-        # 显示统计信息
-        if "statistics" in result:
-            print("\n统计信息:")
-            stats = result["statistics"]
-            for key, value in stats.items():
-                chinese_key = field_translations.get(key, key)
-                # 特殊处理数据集路径，如果路径被调整则显示提示
-                if key == "dataset_path":
-                    print(f"  {chinese_key}: {value}")
-                    # 检查是否路径被调整（通过比较original_path和dataset_path）
-                    original_path = stats.get("original_path")
-                    if original_path and str(original_path) != str(value):
-                        print("    💡 已自动调整为数据集根目录")
-                elif key != "original_path":  # 不显示original_path字段
-                    print(f"  {chinese_key}: {value}")
-
-        # 显示其他重要信息
-        for key, value in result.items():
-            if key not in ["success", "statistics", "message"] and not key.endswith(
-                "_list"
-            ):
-                if isinstance(value, (str, int, float, bool)):
-                    chinese_key = field_translations.get(key, key)
-                    # 对布尔值进行中文化
-                    if isinstance(value, bool):
-                        value_text = "是" if value else "否"
-                    else:
-                        value_text = str(value)
-                    print(f"{chinese_key}: {value_text}")
-
-        # 显示失败文件详情
-        if "failed_pairs" in result and result["failed_pairs"]:
-            print("\n失败文件详情:")
-            for i, failed_item in enumerate(result["failed_pairs"], 1):
-                print(f"  {i}. 图像文件: {failed_item.get('img_file', 'N/A')}")
-                print(f"     标签文件: {failed_item.get('label_file', 'N/A')}")
-                print(f"     失败原因: {failed_item.get('error', 'N/A')}")
-                print(f"     失败阶段: {failed_item.get('action', 'N/A')}")
-                print()
-
-        print("=" * 50)
+        render_result(result)
 
     def _check_system_environment(self) -> None:
         """检查系统环境"""
