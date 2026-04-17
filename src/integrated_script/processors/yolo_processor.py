@@ -28,11 +28,17 @@ from ..core.utils import (  # type: ignore
     cv2_imwrite_unicode,
     delete_file_safe,
     get_file_list,
-    move_file_safe,
     validate_path,
 )
 from .dataset_processor import DatasetProcessor  # type: ignore
-from .yolo import build_label_mapping, format_duration
+from .yolo import (
+    build_label_mapping,
+    continue_ctds_processing_internal,
+    execute_ctds_processing_internal,
+    format_duration,
+    get_project_name,
+    process_ctds_dataset_internal,
+)
 
 
 class YOLOProcessor(DatasetProcessor):
@@ -276,82 +282,13 @@ class YOLOProcessor(DatasetProcessor):
         output_name: Optional[str] = None,
         keep_empty_labels: bool = False,
     ) -> Dict[str, Any]:
-        """CTDS数据转YOLO格式
-
-        基于yolo_dataset_cleaner.py的逻辑，处理CTDS格式的标注数据：
-        - 剔除空标签文件或包含非法标注数据的文件
-        - 图像和标签文件重命名为统一格式：<项目名>-00001.jpg / .txt
-        - 自动复制 obj.names 到 classes.txt
-        - 自动生成 images/ 和 labels/ 文件夹
-        - 最终重命名整个项目文件夹为 <项目名>-总数
-
-        Args:
-            input_path: 输入数据集路径（包含obj.names和obj_train_data文件夹）
-            output_name: 输出项目名称，为空时自动从obj.names生成
-
-        Returns:
-            Dict[str, Any]: 处理结果
-
-        Raises:
-            DatasetError: 处理失败
-        """
-        try:
-            input_dir = validate_path(input_path, must_exist=True, must_be_dir=True)
-            self.logger.info(f"开始处理CTDS数据集: {input_dir}")
-
-            # 检查必要的文件和目录
-            obj_names_path = input_dir / "obj.names"
-            obj_train_data_path = input_dir / "obj_train_data"
-
-            if not obj_names_path.exists():
-                raise DatasetError("未找到obj.names文件", dataset_path=str(input_dir))
-
-            if not obj_train_data_path.exists():
-                raise DatasetError(
-                    "未找到obj_train_data目录", dataset_path=str(input_dir)
-                )
-
-            # 获取项目名称
-            project_name = self._get_project_name(obj_names_path, output_name)
-
-            # 预检测数据集类型（基于原始数据）
-            self.logger.info("正在预检测数据集类型...")
-            pre_detection_result = self.detect_dataset_type(str(obj_train_data_path))
-
-            # 在处理前返回检测结果，让调用方进行用户确认
-            if pre_detection_result.get("success"):
-                # 返回预检测结果，等待用户确认
-                return {
-                    "success": True,
-                    "stage": "pre_detection",
-                    "input_path": str(input_dir),
-                    "project_name": project_name,
-                    "pre_detection_result": pre_detection_result,
-                    "obj_names_path": str(obj_names_path),
-                    "obj_train_data_path": str(obj_train_data_path),
-                    "keep_empty_labels": keep_empty_labels,
-                }
-            else:
-                self.logger.warning("预检测失败，将使用默认检测类型进行处理")
-                confirmed_type = "detection"  # 默认为检测类型
-
-            # 如果预检测失败，直接进行处理
-            return self._execute_ctds_processing(
-                input_dir,
-                project_name,
-                obj_names_path,
-                obj_train_data_path,
-                confirmed_type,
-                pre_detection_result,
-                keep_empty_labels,
-            )
-
-        except Exception as e:
-            self.logger.error(f"CTDS数据处理失败: {str(e)}")
-            raise DatasetError(
-                f"CTDS数据处理失败: {str(e)}",
-                dataset_path=str(input_dir) if "input_dir" in locals() else input_path,
-            )
+        """CTDS数据转YOLO格式。"""
+        return process_ctds_dataset_internal(
+            self,
+            input_path=input_path,
+            output_name=output_name,
+            keep_empty_labels=keep_empty_labels,
+        )
 
     def detect_xlabel_classes(self, source_dir: str) -> Set[str]:
         """扫描X-label/Labelme JSON中的类别名称"""
@@ -1084,30 +1021,12 @@ class YOLOProcessor(DatasetProcessor):
         Returns:
             Dict[str, Any]: 处理结果
         """
-        try:
-            input_dir = Path(pre_result["input_path"])
-            project_name = pre_result["project_name"]
-            obj_names_path = Path(pre_result["obj_names_path"])
-            obj_train_data_path = Path(pre_result["obj_train_data_path"])
-            pre_detection_result = pre_result["pre_detection_result"]
-
-            return self._execute_ctds_processing(
-                input_dir,
-                project_name,
-                obj_names_path,
-                obj_train_data_path,
-                confirmed_type,
-                pre_detection_result,
-                pre_result.get("keep_empty_labels", False)
-                if keep_empty_labels is None
-                else keep_empty_labels,
-            )
-
-        except Exception as e:
-            raise DatasetError(
-                f"CTDS数据处理失败: {str(e)}",
-                dataset_path=pre_result.get("input_path", ""),
-            )
+        return continue_ctds_processing_internal(
+            self,
+            pre_result=pre_result,
+            confirmed_type=confirmed_type,
+            keep_empty_labels=keep_empty_labels,
+        )
 
     def _execute_ctds_processing(
         self,
@@ -1119,271 +1038,26 @@ class YOLOProcessor(DatasetProcessor):
         pre_detection_result: Dict[str, Any],
         keep_empty_labels: bool = False,
     ) -> Dict[str, Any]:
-        """执行CTDS数据处理的核心逻辑
+        """执行CTDS数据处理的核心逻辑"""
+        return execute_ctds_processing_internal(
+            self,
+            input_dir=input_dir,
+            project_name=project_name,
+            obj_names_path=obj_names_path,
+            obj_train_data_path=obj_train_data_path,
+            confirmed_type=confirmed_type,
+            pre_detection_result=pre_detection_result,
+            keep_empty_labels=keep_empty_labels,
+        )
 
-        Args:
-            input_dir: 输入目录
-            project_name: 项目名称
-            obj_names_path: obj.names文件路径
-            obj_train_data_path: obj_train_data目录路径
-            confirmed_type: 确认的数据集类型
-            pre_detection_result: 预检测结果
+    def _get_project_name(
+        self,
+        obj_names_path: Path,
+        manual_name: Optional[str] = None,
+    ) -> str:
+        """获取项目名称。"""
+        return get_project_name(self, obj_names_path, manual_name)
 
-        Returns:
-            Dict[str, Any]: 处理结果
-        """
-        try:
-            # 创建输出目录
-            output_dir = input_dir.parent / project_name
-            create_directory(output_dir)
-
-            labels_dir = output_dir / "labels"
-            images_dir = output_dir / "images"
-            create_directory(labels_dir)
-            create_directory(images_dir)
-
-            result: Dict[str, Any] = {
-                "success": True,
-                "input_path": str(input_dir),
-                "output_path": str(output_dir),
-                "project_name": project_name,
-                "pre_detection_result": pre_detection_result,
-                "confirmed_type": confirmed_type,
-                "processed_files": {"images": [], "labels": [], "classes_file": None},
-                "invalid_files": [],
-                "invalid_details": {
-                    "empty_labels": [],
-                    "invalid_labels": [],
-                    "missing_images": [],
-                    "missing_labels": [],
-                },
-                "statistics": {
-                    "total_processed": 0,
-                    "invalid_removed": 0,
-                    "final_count": 0,
-                    "empty_removed": 0,
-                    "missing_images": 0,
-                    "missing_labels": 0,
-                },
-            }
-            processed_files: Dict[str, Any] = cast(Dict[str, Any], result["processed_files"])
-            invalid_details: Dict[str, Any] = cast(Dict[str, Any], result["invalid_details"])
-            invalid_files: List[str] = cast(List[str], result["invalid_files"])
-            statistics: Dict[str, int] = cast(Dict[str, int], result["statistics"])
-            processed_images: List[str] = cast(List[str], processed_files["images"])
-            processed_labels: List[str] = cast(List[str], processed_files["labels"])
-            empty_labels: List[str] = cast(List[str], invalid_details["empty_labels"])
-            invalid_labels: List[str] = cast(List[str], invalid_details["invalid_labels"])
-            missing_images: List[str] = cast(List[str], invalid_details["missing_images"])
-            missing_labels: List[str] = cast(List[str], invalid_details["missing_labels"])
-            hard_error = False
-
-            # 获取所有标签文件（排除train.txt）
-            all_files = list(obj_train_data_path.iterdir())
-            txt_files = [
-                f
-                for f in all_files
-                if f.suffix.lower() == ".txt" and f.name.lower() != "train.txt"
-            ]
-            label_stems = {f.stem for f in txt_files}
-            img_files = [
-                f
-                for f in all_files
-                if f.suffix.lower() in {ext.lower() for ext in self.image_extensions}
-            ]
-            img_by_stem = {f.stem: f for f in img_files}
-
-            self.logger.info(f"找到 {len(txt_files)} 个标签文件")
-            self.logger.info(f"找到 {len(img_files)} 个图像文件")
-            self.logger.info(f"使用确认的数据集类型进行验证: {confirmed_type}")
-
-            # 处理标签文件和对应的图像
-            count = 1
-            invalid_count = 0
-
-            with progress_context(len(txt_files), "处理CTDS数据") as progress:
-                for txt_file in txt_files:
-                    try:
-                        if not keep_empty_labels and self._is_empty_label_file(txt_file):
-                            invalid_count += 1
-                            statistics["empty_removed"] += 1
-                            invalid_files.append(str(txt_file))
-                            empty_labels.append(str(txt_file))
-                            progress.update_progress(1)
-                            continue
-
-                        # 检查标签文件是否有效（根据确认的数据集类型）
-                        if self._contains_invalid_ctds_data(txt_file, confirmed_type):
-                            invalid_count += 1
-                            invalid_files.append(str(txt_file))
-                            invalid_labels.append(str(txt_file))
-                            progress.update_progress(1)
-                            continue
-
-                        # 查找对应的图像文件
-                        base_name = txt_file.stem
-                        img_file = img_by_stem.get(base_name)
-
-                        if img_file:
-
-                            # 生成新的文件名
-                            new_txt_name = f"{project_name}-{count:05d}.txt"
-                            new_txt_path = labels_dir / new_txt_name
-
-                            # 移动标签文件
-                            move_file_safe(txt_file, new_txt_path)
-                            processed_labels.append(str(new_txt_path))
-
-                            # 保持原始扩展名
-                            new_img_name = (
-                                f"{project_name}-{count:05d}{img_file.suffix}"
-                            )
-                            new_img_path = images_dir / new_img_name
-
-                            # 移动图像文件
-                            move_file_safe(img_file, new_img_path)
-                            processed_images.append(str(new_img_path))
-                        else:
-                            invalid_count += 1
-                            statistics["missing_images"] += 1
-                            invalid_files.append(str(txt_file))
-                            missing_images.append(str(txt_file))
-                            self.logger.warning(
-                                f"未找到标签文件 {txt_file.name} 对应的图像文件，已跳过"
-                            )
-                            progress.update_progress(1)
-                            continue
-
-                        count += 1
-                        progress.update_progress(1)
-
-                    except Exception as e:
-                        self.logger.error(f"处理文件失败 {txt_file}: {str(e)}")
-                        hard_error = True
-
-            # 更新统计信息
-            total_files = len(txt_files)
-            valid_files = count - 1
-            statistics["total_processed"] = total_files
-            statistics["invalid_removed"] = invalid_count
-            statistics["final_count"] = valid_files
-
-            unmatched_images = [
-                f for f in img_files if f.stem not in label_stems
-            ]
-            statistics["missing_labels"] = len(unmatched_images)
-            if unmatched_images:
-                invalid_files.extend(str(f) for f in unmatched_images)
-                missing_labels.extend(str(f) for f in unmatched_images)
-
-            # 输出处理统计信息
-            self.logger.info(
-                f"CTDS数据处理完成 - 总文件数: {total_files}, 有效文件: {valid_files}, 无效文件: {invalid_count}"
-            )
-            if statistics["missing_images"] > 0:
-                self.logger.warning(
-                    f"未找到图像的标签文件数: {statistics['missing_images']}"
-                )
-            if statistics["missing_labels"] > 0:
-                self.logger.warning(
-                    f"未找到标签的图像文件数: {statistics['missing_labels']}"
-                )
-
-            # 使用OpenCV重新保存图像（如果可用）
-            try:
-                import importlib.util
-
-                if importlib.util.find_spec("cv2") is None:
-                    raise ImportError
-                self._convert_images_with_opencv(images_dir)
-            except ImportError:
-                self.logger.warning("OpenCV不可用，跳过图像转换")
-            except Exception as e:
-                self.logger.warning(f"图像转换失败: {str(e)}")
-
-            # 复制obj.names到classes.txt
-            classes_file_path = output_dir / "classes.txt"
-            try:
-                copy_file_safe(obj_names_path, classes_file_path)
-                processed_files["classes_file"] = str(classes_file_path)
-                self.logger.info(
-                    f"已复制 {obj_names_path.name} 到 {classes_file_path.name}"
-                )
-            except Exception as e:
-                self.logger.error(f"复制classes文件失败: {str(e)}")
-                hard_error = True
-
-            # 重命名项目文件夹，包含文件数
-            final_count = count - 1
-            final_project_name = f"{project_name}-{final_count:05d}"
-            final_output_dir = input_dir.parent / final_project_name
-
-            if output_dir != final_output_dir:
-                target_dir = final_output_dir
-                if target_dir.exists():
-                    suffix = 1
-                    while True:
-                        candidate = Path(f"{final_output_dir}-{suffix}")
-                        if not candidate.exists():
-                            target_dir = candidate
-                            break
-                        suffix += 1
-                    self.logger.warning(
-                        f"目标目录已存在，使用新名称: {target_dir.name}"
-                    )
-
-                try:
-                    output_dir.rename(target_dir)
-                    result["output_path"] = str(target_dir)
-                    result["project_name"] = target_dir.name
-                    self.logger.info(f"项目文件夹已重命名为: {target_dir.name}")
-                except Exception as e:
-                    self.logger.error(f"重命名项目文件夹失败: {str(e)}")
-                    hard_error = True
-
-            # 更新统计信息
-            statistics["total_processed"] = len(txt_files)
-            statistics["invalid_removed"] = invalid_count
-            statistics["final_count"] = final_count
-
-            # 设置最终的数据集类型检测结果
-            result["detected_dataset_type"] = confirmed_type
-            result["detection_confidence"] = pre_detection_result.get("confidence", 1.0)
-            result["dataset_type_detection"] = pre_detection_result
-
-            result["success"] = not hard_error
-            return result
-
-        except Exception as e:
-            raise DatasetError(
-                f"CTDS数据处理失败: {str(e)}", dataset_path=str(input_dir)
-            )
-
-    def _get_project_name(self, obj_names_path: Path, manual_name: Optional[str] = None) -> str:
-        """获取项目名称
-
-        Args:
-            obj_names_path: obj.names文件路径
-            manual_name: 手动指定的名称
-
-        Returns:
-            str: 项目名称
-        """
-        if manual_name and manual_name.strip():
-            return manual_name.strip()
-
-        try:
-            with open(obj_names_path, "r", encoding="utf-8") as f:
-                lines = [line.strip() for line in f.readlines() if line.strip()]
-                if lines:
-                    project_name = "-".join(lines)
-                    self.logger.info(f"从 obj.names 获取到项目名称: {project_name}")
-                    return project_name
-        except Exception as e:
-            self.logger.warning(f"读取 obj.names 失败: {str(e)}")
-
-        # 默认名称
-        return "dataset"
 
     def _contains_invalid_ctds_data(
         self, label_file: Path, dataset_type: str = "detection"
