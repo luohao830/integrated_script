@@ -61,7 +61,9 @@ def test_get_dataset_statistics_accepts_labels_subdir_path(tmp_path: Path) -> No
     assert stats["class_names"] == ["cat"]
 
 
-def test_detect_yolo_dataset_type_returns_detection_for_bbox_labels(tmp_path: Path) -> None:
+def test_detect_yolo_dataset_type_returns_detection_for_bbox_labels(
+    tmp_path: Path,
+) -> None:
     dataset = tmp_path / "dataset"
     images, labels = _create_basic_yolo_dataset(dataset)
 
@@ -77,7 +79,9 @@ def test_detect_yolo_dataset_type_returns_detection_for_bbox_labels(tmp_path: Pa
     assert result["statistics"]["segmentation_files"] == 0
 
 
-def test_detect_yolo_dataset_type_returns_segmentation_for_polygon_labels(tmp_path: Path) -> None:
+def test_detect_yolo_dataset_type_returns_segmentation_for_polygon_labels(
+    tmp_path: Path,
+) -> None:
     dataset = tmp_path / "dataset"
     images, labels = _create_basic_yolo_dataset(dataset)
 
@@ -92,7 +96,9 @@ def test_detect_yolo_dataset_type_returns_segmentation_for_polygon_labels(tmp_pa
     assert result["statistics"]["segmentation_files"] == 1
 
 
-def test_detect_xlabel_dataset_type_reports_segmentation_like_shapes(tmp_path: Path) -> None:
+def test_detect_xlabel_dataset_type_reports_segmentation_like_shapes(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "xlabel"
     source.mkdir(parents=True)
 
@@ -131,7 +137,9 @@ def test_process_ctds_dataset_returns_pre_detection_stage_before_confirmation(
     assert not (tmp_path / "demo").exists()
 
 
-def test_continue_ctds_processing_produces_output_after_confirmation(tmp_path: Path) -> None:
+def test_continue_ctds_processing_produces_output_after_confirmation(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "ctds"
     _create_basic_ctds_dataset(source)
 
@@ -154,9 +162,9 @@ def test_continue_ctds_processing_produces_output_after_confirmation(tmp_path: P
     assert not (source / "obj_train_data" / "sample.txt").exists()
 
 
-
-
-def test_continue_ctds_processing_supports_segmentation_confirmation(tmp_path: Path) -> None:
+def test_continue_ctds_processing_supports_segmentation_confirmation(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "ctds-seg"
     _create_basic_ctds_segmentation_dataset(source)
 
@@ -164,7 +172,9 @@ def test_continue_ctds_processing_supports_segmentation_confirmation(tmp_path: P
     pre_result = processor.process_ctds_dataset(str(source), output_name="demo-seg")
     assert pre_result["stage"] == "pre_detection"
 
-    result = processor.continue_ctds_processing(pre_result, confirmed_type="segmentation")
+    result = processor.continue_ctds_processing(
+        pre_result, confirmed_type="segmentation"
+    )
     output_path = Path(result["output_path"])
 
     assert result["success"] is True
@@ -175,7 +185,9 @@ def test_continue_ctds_processing_supports_segmentation_confirmation(tmp_path: P
     assert len(list((output_path / "labels").glob("*.txt"))) == 1
 
 
-def test_clean_unmatched_files_dry_run_collects_orphans_without_deleting(tmp_path: Path) -> None:
+def test_clean_unmatched_files_dry_run_collects_orphans_without_deleting(
+    tmp_path: Path,
+) -> None:
     dataset = tmp_path / "dataset"
     images, labels = _create_basic_yolo_dataset(dataset)
 
@@ -192,8 +204,12 @@ def test_clean_unmatched_files_dry_run_collects_orphans_without_deleting(tmp_pat
     processor = _build_processor(tmp_path)
     result = processor.clean_unmatched_files(str(dataset), dry_run=True)
 
-    dry_run_deleted_images = {Path(path).name for path in result["deleted_files"]["orphaned_images"]}
-    dry_run_deleted_labels = {Path(path).name for path in result["deleted_files"]["orphaned_labels"]}
+    dry_run_deleted_images = {
+        Path(path).name for path in result["deleted_files"]["orphaned_images"]
+    }
+    dry_run_deleted_labels = {
+        Path(path).name for path in result["deleted_files"]["orphaned_labels"]
+    }
 
     assert result["success"] is True
     assert "only_image.jpg" in dry_run_deleted_images
@@ -224,3 +240,40 @@ def test_clean_unmatched_files_deletes_orphans_when_not_dry_run(tmp_path: Path) 
     assert not orphan_label.exists()
     assert matched_image.exists()
     assert matched_label.exists()
+
+
+def test_clean_unmatched_files_handles_empty_labels_in_dry_run(tmp_path: Path) -> None:
+    dataset = tmp_path / "dataset"
+    images, labels = _create_basic_yolo_dataset(dataset)
+
+    (images / "a.jpg").write_text("img", encoding="utf-8")
+    empty_label = labels / "a.txt"
+    empty_label.write_text("\n", encoding="utf-8")
+
+    processor = _build_processor(tmp_path)
+    result = processor.clean_unmatched_files(str(dataset), dry_run=True)
+
+    dry_run_empty = {
+        Path(path).name for path in result["deleted_files"]["empty_labels"]
+    }
+
+    assert result["success"] is True
+    assert "a.txt" in dry_run_empty
+    assert empty_label.exists()
+
+
+def test_clean_unmatched_files_deletes_empty_labels_when_not_dry_run(
+    tmp_path: Path,
+) -> None:
+    dataset = tmp_path / "dataset"
+    images, labels = _create_basic_yolo_dataset(dataset)
+
+    (images / "a.jpg").write_text("img", encoding="utf-8")
+    empty_label = labels / "a.txt"
+    empty_label.write_text("\n", encoding="utf-8")
+
+    processor = _build_processor(tmp_path)
+    result = processor.clean_unmatched_files(str(dataset), dry_run=False)
+
+    assert result["success"] is True
+    assert not empty_label.exists()

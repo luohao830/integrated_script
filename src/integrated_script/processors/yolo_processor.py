@@ -17,7 +17,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, cast
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..config.exceptions import DatasetError  # type: ignore
 from ..core.progress import progress_context  # type: ignore
@@ -26,16 +26,17 @@ from ..core.utils import (  # type: ignore
     create_directory,
     cv2_imread_unicode,
     cv2_imwrite_unicode,
-    delete_file_safe,
     get_file_list,
     validate_path,
 )
 from .dataset_processor import DatasetProcessor  # type: ignore
 from .yolo import (
     build_label_mapping,
+    clean_unmatched_files_internal,
     continue_ctds_processing_internal,
     execute_ctds_processing_internal,
     format_duration,
+    get_dataset_statistics_internal,
     get_project_name,
     process_ctds_dataset_internal,
 )
@@ -84,197 +85,14 @@ class YOLOProcessor(DatasetProcessor):
         raise NotImplementedError("请使用具体的处理方法")
 
     def get_dataset_statistics(self, dataset_path: str) -> Dict[str, Any]:
-        """获取数据集统计信息
-
-        Args:
-            dataset_path: 数据集路径
-
-        Returns:
-            Dict[str, Any]: 统计信息
-        """
-        try:
-            original_dataset_path = dataset_path
-            dataset_dir = validate_path(dataset_path, must_exist=True, must_be_dir=True)
-
-            # 智能检测数据集根目录，如果传入的是子目录则自动调整
-            dataset_dir = self._detect_dataset_root(dataset_dir)
-
-            self.logger.info(f"开始获取YOLO数据集统计信息: {dataset_dir}")
-
-            # 调用父类的验证方法
-            validation_result = self._validate_yolo_dataset(
-                dataset_dir, check_integrity=True
-            )
-
-            # 检查classes文件
-            classes_file = dataset_dir / self.classes_file
-            classes_file_path = str(classes_file) if classes_file.exists() else None
-
-            stats = validation_result["statistics"].copy()
-            stats["dataset_path"] = str(dataset_dir)  # 使用调整后的路径
-            stats["original_path"] = original_dataset_path  # 保存原始路径用于比较
-            stats["is_valid"] = validation_result.get("success", False)
-            stats["has_classes_file"] = classes_file_path is not None
-
-            # 添加类别统计
-            if classes_file_path:
-                try:
-                    with open(classes_file_path, "r", encoding="utf-8") as f:
-                        classes = [
-                            line.strip() for line in f.readlines() if line.strip()
-                        ]
-                    stats["num_classes"] = len(classes)
-                    stats["class_names"] = classes
-                except Exception:
-                    stats["num_classes"] = 0
-                    stats["class_names"] = []
-            else:
-                stats["num_classes"] = 0
-                stats["class_names"] = []
-
-            # 返回完整的验证结果，包含issues字段
-            result: Dict[str, Any] = {
-                "statistics": stats,
-                "valid": validation_result.get("success", False),
-                "classes_file": classes_file_path,
-                "issues": validation_result.get("issues", []),  # 添加issues字段
-            }
-
-            return result
-
-        except Exception as e:
-            raise DatasetError(
-                f"获取数据集统计信息失败: {str(e)}", dataset_path=dataset_path
-            )
+        """获取数据集统计信息。"""
+        return get_dataset_statistics_internal(self, dataset_path)
 
     def clean_unmatched_files(
         self, dataset_path: str, dry_run: bool = False
     ) -> Dict[str, Any]:
-        """清理数据集中不匹配的文件
-
-        Args:
-            dataset_path: 数据集路径
-            dry_run: 是否为试运行（不实际删除文件）
-
-        Returns:
-            Dict[str, Any]: 清理结果
-
-        Raises:
-            DatasetError: 清理失败
-        """
-        try:
-            dataset_dir = validate_path(dataset_path, must_exist=True, must_be_dir=True)
-            self.logger.info(f"开始清理不匹配文件: {dataset_dir}")
-
-            # 先验证数据集
-            validation_result: Dict[str, Any] = self.get_dataset_statistics(dataset_path)
-
-            deleted_files: Dict[str, List[str]] = {
-                "orphaned_images": [],
-                "orphaned_labels": [],
-                "invalid_labels": [],
-            }
-            statistics: Dict[str, int] = {
-                "total_deleted": 0,
-                "deleted_images": 0,
-                "deleted_labels": 0,
-            }
-            result: Dict[str, Any] = {
-                "success": True,
-                "dataset_path": str(dataset_dir),
-                "dry_run": dry_run,
-                "deleted_files": deleted_files,
-                "statistics": statistics,
-            }
-
-            # 如果数据集已经有效，无需清理
-            if validation_result["valid"]:
-                self.logger.info("数据集已经有效，无需清理")
-                return result
-
-            # 收集需要删除的文件
-            files_to_delete: List[Tuple[Path, str]] = []
-            issues: List[Dict[str, Any]] = cast(
-                List[Dict[str, Any]], validation_result.get("issues", [])
-            )
-
-            # 调试信息：打印验证结果
-            self.logger.info(f"验证结果issues数量: {len(issues)}")
-            for i, issue in enumerate(issues):
-                self.logger.info(
-                    "Issue %s: type=%s, count=%s, files_count=%s",
-                    i,
-                    issue.get("type"),
-                    issue.get("count"),
-                    len(issue.get("files", [])),
-                )
-
-            # 从验证结果的issues中提取需要删除的文件
-            for issue in issues:
-                issue_type = issue.get("type")
-                if issue_type == "orphaned_images":
-                    # 添加孤立的图像文件（没有对应标签的图像）
-                    for img_path in cast(List[str], issue.get("files", [])):
-                        files_to_delete.append((Path(img_path), "orphaned_images"))
-                elif issue_type == "orphaned_labels":
-                    # 添加孤立的标签文件（没有对应图像的标签）
-                    for lbl_path in cast(List[str], issue.get("files", [])):
-                        files_to_delete.append((Path(lbl_path), "orphaned_labels"))
-                elif issue_type == "invalid_labels":
-                    # 添加无效的标签文件
-                    for invalid_label in cast(List[Dict[str, Any]], issue.get("examples", [])):
-                        files_to_delete.append(
-                            (Path(invalid_label["file"]), "invalid_labels")
-                        )
-                elif issue_type == "empty_labels":
-                    # 添加空标签文件
-                    for empty_label_path in cast(List[str], issue.get("files", [])):
-                        files_to_delete.append((Path(empty_label_path), "empty_labels"))
-
-            # 删除文件
-            with progress_context(len(files_to_delete), "清理不匹配文件") as progress:
-                for file_path, file_type in files_to_delete:
-                    try:
-                        deleted_bucket = deleted_files[file_type]
-                        if dry_run:
-                            # 试运行模式，只记录不实际删除
-                            deleted_bucket.append(str(file_path))
-                            self.logger.info(f"[试运行] 将删除: {file_path}")
-                        else:
-                            # 实际删除文件
-                            if file_path.exists():
-                                delete_file_safe(file_path)
-                                deleted_bucket.append(str(file_path))
-                                self.logger.info(f"已删除: {file_path}")
-
-                                # 更新统计
-                                if file_type == "orphaned_images":
-                                    statistics["deleted_images"] += 1
-                                else:
-                                    statistics["deleted_labels"] += 1
-
-                        progress.update_progress(1)
-
-                    except Exception as e:
-                        self.logger.error(f"删除文件失败 {file_path}: {str(e)}")
-                        result["success"] = False
-
-            # 更新总删除数
-            statistics["total_deleted"] = (
-                statistics["deleted_images"] + statistics["deleted_labels"]
-            )
-
-            if dry_run:
-                self.logger.info(f"试运行完成，将删除 {len(files_to_delete)} 个文件")
-            else:
-                self.logger.info(f"清理完成: {result['statistics']}")
-
-            return result
-
-        except Exception as e:
-            raise DatasetError(
-                f"清理不匹配文件失败: {str(e)}", dataset_path=dataset_path
-            )
+        """清理数据集中不匹配的文件。"""
+        return clean_unmatched_files_internal(self, dataset_path, dry_run)
 
     def process_ctds_dataset(
         self,
@@ -398,9 +216,7 @@ class YOLOProcessor(DatasetProcessor):
 
         labels_dir = dataset_dir / "labels"
         if not labels_dir.exists():
-            raise DatasetError(
-                "未找到labels目录", dataset_path=str(dataset_dir)
-            )
+            raise DatasetError("未找到labels目录", dataset_path=str(dataset_dir))
 
         label_files = list(labels_dir.glob("*.txt"))
         if not label_files:
@@ -643,9 +459,7 @@ class YOLOProcessor(DatasetProcessor):
                             )
 
                             class_id = class_mapping[label]
-                            f.write(
-                                f"{class_id} {x:.10f} {y:.10f} {w:.10f} {h:.10f}\n"
-                            )
+                            f.write(f"{class_id} {x:.10f} {y:.10f} {w:.10f} {h:.10f}\n")
 
                     result["statistics"]["converted"] += 1
                 except Exception as e:
@@ -1058,7 +872,6 @@ class YOLOProcessor(DatasetProcessor):
         """获取项目名称。"""
         return get_project_name(self, obj_names_path, manual_name)
 
-
     def _contains_invalid_ctds_data(
         self, label_file: Path, dataset_type: str = "detection"
     ) -> bool:
@@ -1379,9 +1192,7 @@ class YOLOProcessor(DatasetProcessor):
             dataset_dir = validate_path(
                 yolo_dataset_path, must_exist=True, must_be_dir=True
             )
-            self.logger.info(
-                f"开始将YOLO数据集转换为CTDS格式: {dataset_dir}"
-            )
+            self.logger.info(f"开始将YOLO数据集转换为CTDS格式: {dataset_dir}")
 
             labels_dir = dataset_dir / "labels"
             images_dir = dataset_dir / "images"
@@ -1456,8 +1267,7 @@ class YOLOProcessor(DatasetProcessor):
             label_files = sorted(
                 f
                 for f in labels_dir.glob("*.txt")
-                if f.is_file()
-                and f.name.lower() != "train.txt"
+                if f.is_file() and f.name.lower() != "train.txt"
             )
 
             result: Dict[str, Any] = {
@@ -1499,7 +1309,9 @@ class YOLOProcessor(DatasetProcessor):
                         if image_file:
                             target_image = obj_train_data_dir / image_file.name
                             copy_file_safe(image_file, target_image)
-                            result["processed_files"]["images"].append(str(target_image))
+                            result["processed_files"]["images"].append(
+                                str(target_image)
+                            )
                             copied_images += 1
                             train_image_names.append(target_image.name)
                         else:
@@ -1727,7 +1539,11 @@ class YOLOProcessor(DatasetProcessor):
 
             # 合并数据集
             merge_result = self._merge_different_dataset_files(
-                validated_paths, output_dir, image_prefix, unified_classes, class_mappings
+                validated_paths,
+                output_dir,
+                image_prefix,
+                unified_classes,
+                class_mappings,
             )
 
             self.logger.info(f"不同类型数据集合并完成: {output_dir}")
@@ -1748,7 +1564,9 @@ class YOLOProcessor(DatasetProcessor):
             self.logger.error(f"不同类型数据集合并失败: {str(e)}")
             raise DatasetError(f"不同类型数据集合并失败: {str(e)}")
 
-    def _collect_all_classes_info(self, dataset_paths: List[Path]) -> List[Dict[str, Any]]:
+    def _collect_all_classes_info(
+        self, dataset_paths: List[Path]
+    ) -> List[Dict[str, Any]]:
         """收集所有数据集的类别信息
 
         Args:
@@ -1762,17 +1580,21 @@ class YOLOProcessor(DatasetProcessor):
         for i, dataset_path in enumerate(dataset_paths):
             classes_file = dataset_path / self.classes_file
             if not classes_file.exists():
-                raise DatasetError(f"数据集 {dataset_path} 缺少 {self.classes_file} 文件")
+                raise DatasetError(
+                    f"数据集 {dataset_path} 缺少 {self.classes_file} 文件"
+                )
 
             try:
                 with open(classes_file, "r", encoding="utf-8") as f:
                     classes = [line.strip() for line in f.readlines() if line.strip()]
 
-                all_classes_info.append({
-                    "dataset_index": i,
-                    "dataset_path": dataset_path,
-                    "classes": classes,
-                })
+                all_classes_info.append(
+                    {
+                        "dataset_index": i,
+                        "dataset_path": dataset_path,
+                        "classes": classes,
+                    }
+                )
             except Exception as e:
                 raise DatasetError(f"读取 {classes_file} 失败: {str(e)}")
 
@@ -1836,7 +1658,9 @@ class YOLOProcessor(DatasetProcessor):
             classes_prefix += f"_etc{len(unified_classes)}"
 
         # 生成最终名称
-        output_name = f"{classes_prefix}_mixed_{len(dataset_paths)}ds_{total_images}imgs"
+        output_name = (
+            f"{classes_prefix}_mixed_{len(dataset_paths)}ds_{total_images}imgs"
+        )
 
         # 清理文件名中的非法字符
         output_name = re.sub(r'[<>:"/\\|?*]', "_", output_name)
@@ -1941,12 +1765,14 @@ class YOLOProcessor(DatasetProcessor):
                     self.logger.error(f"处理文件失败 {image_file}: {str(e)}")
 
             dataset_time = time.time() - dataset_start_time
-            dataset_stats.update({
-                "end_index": current_index - 1,
-                "images_processed": images_processed,
-                "labels_processed": labels_processed,
-                "processing_time": round(dataset_time, 2),
-            })
+            dataset_stats.update(
+                {
+                    "end_index": current_index - 1,
+                    "images_processed": images_processed,
+                    "labels_processed": labels_processed,
+                    "processing_time": round(dataset_time, 2),
+                }
+            )
 
             statistics.append(dataset_stats)
             total_images += images_processed
@@ -2000,7 +1826,9 @@ class YOLOProcessor(DatasetProcessor):
                             f"标签文件 {source_label} 中发现未知类别ID: {old_class_id}"
                         )
                 except ValueError:
-                    self.logger.warning(f"标签文件 {source_label} 中发现无效类别ID: {parts[0]}")
+                    self.logger.warning(
+                        f"标签文件 {source_label} 中发现无效类别ID: {parts[0]}"
+                    )
 
             with open(target_label, "w", encoding="utf-8") as f:
                 for line in converted_lines:

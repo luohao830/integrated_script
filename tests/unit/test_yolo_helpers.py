@@ -77,7 +77,9 @@ def test_processor_facade_build_label_mapping_matches_helper(tmp_path: Path) -> 
 
 
 @pytest.mark.unit
-def test_get_project_name_reads_obj_names_when_manual_name_missing(tmp_path: Path) -> None:
+def test_get_project_name_reads_obj_names_when_manual_name_missing(
+    tmp_path: Path,
+) -> None:
     processor = _build_processor(tmp_path)
     obj_names = tmp_path / "obj.names"
     obj_names.write_text("car\ntruck\n", encoding="utf-8")
@@ -169,4 +171,174 @@ def test_processor_facade_continue_ctds_processing_delegates_to_internal_helper(
         "pre_result": pre_result,
         "confirmed_type": "detection",
         "keep_empty_labels": False,
+    }
+
+
+@pytest.mark.unit
+def test_processor_facade_get_dataset_statistics_delegates_to_internal_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+    expected = {"valid": True, "statistics": {"is_valid": True}}
+
+    captured: Dict[str, Any] = {}
+
+    def fake_get_dataset_statistics_internal(
+        self: YOLOProcessor,
+        dataset_path: str,
+    ) -> Dict[str, Any]:
+        captured["self"] = self
+        captured["dataset_path"] = dataset_path
+        return expected
+
+    monkeypatch.setattr(
+        yolo_processor,
+        "get_dataset_statistics_internal",
+        fake_get_dataset_statistics_internal,
+    )
+
+    result = processor.get_dataset_statistics("/tmp/yolo")
+
+    assert result == expected
+    assert captured == {
+        "self": processor,
+        "dataset_path": "/tmp/yolo",
+    }
+
+
+@pytest.mark.unit
+def test_processor_facade_clean_unmatched_files_delegates_to_internal_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+    expected = {
+        "success": True,
+        "dry_run": True,
+        "statistics": {"total_deleted": 0},
+    }
+
+    captured: Dict[str, Any] = {}
+
+    def fake_clean_unmatched_files_internal(
+        self: YOLOProcessor,
+        dataset_path: str,
+        dry_run: bool,
+    ) -> Dict[str, Any]:
+        captured["self"] = self
+        captured["dataset_path"] = dataset_path
+        captured["dry_run"] = dry_run
+        return expected
+
+    monkeypatch.setattr(
+        yolo_processor,
+        "clean_unmatched_files_internal",
+        fake_clean_unmatched_files_internal,
+    )
+
+    result = processor.clean_unmatched_files("/tmp/yolo", dry_run=True)
+
+    assert result == expected
+    assert captured == {
+        "self": processor,
+        "dataset_path": "/tmp/yolo",
+        "dry_run": True,
+    }
+
+
+@pytest.mark.unit
+def test_processor_facade_execute_ctds_processing_delegates_to_internal_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+    expected = {"success": True, "finalized": True}
+
+    captured: Dict[str, Any] = {}
+
+    def fake_execute_ctds_processing_internal(
+        self: YOLOProcessor,
+        input_dir: Path,
+        project_name: str,
+        obj_names_path: Path,
+        obj_train_data_path: Path,
+        confirmed_type: str,
+        pre_detection_result: Dict[str, Any],
+        keep_empty_labels: bool,
+    ) -> Dict[str, Any]:
+        captured["self"] = self
+        captured["input_dir"] = input_dir
+        captured["project_name"] = project_name
+        captured["obj_names_path"] = obj_names_path
+        captured["obj_train_data_path"] = obj_train_data_path
+        captured["confirmed_type"] = confirmed_type
+        captured["pre_detection_result"] = pre_detection_result
+        captured["keep_empty_labels"] = keep_empty_labels
+        return expected
+
+    monkeypatch.setattr(
+        yolo_processor,
+        "execute_ctds_processing_internal",
+        fake_execute_ctds_processing_internal,
+    )
+
+    input_dir = tmp_path / "ctds"
+    obj_names_path = input_dir / "obj.names"
+    obj_train_data_path = input_dir / "obj_train_data"
+    pre_detection_result = {"success": True, "dataset_type": "detection"}
+
+    result = processor._execute_ctds_processing(
+        input_dir=input_dir,
+        project_name="demo",
+        obj_names_path=obj_names_path,
+        obj_train_data_path=obj_train_data_path,
+        confirmed_type="detection",
+        pre_detection_result=pre_detection_result,
+        keep_empty_labels=True,
+    )
+
+    assert result == expected
+    assert captured == {
+        "self": processor,
+        "input_dir": input_dir,
+        "project_name": "demo",
+        "obj_names_path": obj_names_path,
+        "obj_train_data_path": obj_train_data_path,
+        "confirmed_type": "detection",
+        "pre_detection_result": pre_detection_result,
+        "keep_empty_labels": True,
+    }
+
+
+@pytest.mark.unit
+def test_processor_facade_get_project_name_delegates_to_internal_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+    expected = "project-from-helper"
+
+    captured: Dict[str, Any] = {}
+
+    def fake_get_project_name(
+        self: YOLOProcessor,
+        obj_names_path: Path,
+        manual_name: Optional[str],
+    ) -> str:
+        captured["self"] = self
+        captured["obj_names_path"] = obj_names_path
+        captured["manual_name"] = manual_name
+        return expected
+
+    monkeypatch.setattr(yolo_processor, "get_project_name", fake_get_project_name)
+
+    obj_names_path = tmp_path / "obj.names"
+    result = processor._get_project_name(obj_names_path, manual_name="demo")
+
+    assert result == expected
+    assert captured == {
+        "self": processor,
+        "obj_names_path": obj_names_path,
+        "manual_name": "demo",
     }
