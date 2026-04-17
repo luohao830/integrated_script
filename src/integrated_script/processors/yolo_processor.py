@@ -32,6 +32,7 @@ from ..core.utils import (  # type: ignore
     validate_path,
 )
 from .dataset_processor import DatasetProcessor  # type: ignore
+from .yolo import build_label_mapping, format_duration
 
 
 class YOLOProcessor(DatasetProcessor):
@@ -2607,12 +2608,7 @@ class YOLOProcessor(DatasetProcessor):
         Returns:
             Dict[str, Path]: 基础名称到标签文件路径的映射
         """
-        label_mapping = {}
-        for label_file in label_files:
-            if label_file.name != self.classes_file:
-                base_name = label_file.stem
-                label_mapping[base_name] = label_file
-        return label_mapping
+        return build_label_mapping(label_files, self.classes_file)
 
     def _format_duration(self, seconds: float) -> str:
         """格式化时间显示
@@ -2623,17 +2619,7 @@ class YOLOProcessor(DatasetProcessor):
         Returns:
             str: 格式化的时间字符串
         """
-        if seconds < 60:
-            return f"{seconds:.1f}秒"
-        elif seconds < 3600:
-            minutes = int(seconds // 60)
-            secs = seconds % 60
-            return f"{minutes}分{secs:.1f}秒"
-        else:
-            hours = int(seconds // 3600)
-            minutes = int((seconds % 3600) // 60)
-            secs = seconds % 60
-            return f"{hours}小时{minutes}分{secs:.1f}秒"
+        return format_duration(seconds)
 
     def _merge_dataset_parallel(
         self,
