@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Tuple
 
 from integrated_script.config.settings import ConfigManager
 from integrated_script.processors.yolo_processor import YOLOProcessor
@@ -12,12 +13,32 @@ def _build_processor(tmp_path: Path) -> YOLOProcessor:
     return YOLOProcessor(config=config)
 
 
-def _create_basic_yolo_dataset(dataset: Path) -> tuple[Path, Path]:
+def _create_basic_yolo_dataset(dataset: Path) -> Tuple[Path, Path]:
     images = dataset / "images"
     labels = dataset / "labels"
     images.mkdir(parents=True)
     labels.mkdir(parents=True)
     return images, labels
+
+
+def _create_basic_ctds_dataset(dataset: Path) -> None:
+    obj_train_data = dataset / "obj_train_data"
+    obj_train_data.mkdir(parents=True)
+
+    (dataset / "obj.names").write_text("car\n", encoding="utf-8")
+    (obj_train_data / "sample.txt").write_text("0 0.5 0.5 0.2 0.2\n", encoding="utf-8")
+    (obj_train_data / "sample.jpg").write_text("img", encoding="utf-8")
+
+
+def _create_basic_ctds_segmentation_dataset(dataset: Path) -> None:
+    obj_train_data = dataset / "obj_train_data"
+    obj_train_data.mkdir(parents=True)
+
+    (dataset / "obj.names").write_text("car\n", encoding="utf-8")
+    (obj_train_data / "sample.txt").write_text(
+        "0 0.1 0.1 0.2 0.2 0.3 0.3\n", encoding="utf-8"
+    )
+    (obj_train_data / "sample.jpg").write_text("img", encoding="utf-8")
 
 
 def test_get_dataset_statistics_accepts_labels_subdir_path(tmp_path: Path) -> None:
@@ -92,6 +113,66 @@ def test_detect_xlabel_dataset_type_reports_segmentation_like_shapes(tmp_path: P
     assert result["detected_type"] == "segmentation"
     assert result["statistics"]["segmentation_like"] == 1
     assert result["statistics"]["detection_like"] == 0
+
+
+def test_process_ctds_dataset_returns_pre_detection_stage_before_confirmation(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "ctds"
+    _create_basic_ctds_dataset(source)
+
+    processor = _build_processor(tmp_path)
+    result = processor.process_ctds_dataset(str(source), output_name="demo")
+
+    assert result["success"] is True
+    assert result["stage"] == "pre_detection"
+    assert result["pre_detection_result"]["success"] is True
+    assert result["pre_detection_result"]["dataset_type"] == "detection"
+    assert not (tmp_path / "demo").exists()
+
+
+def test_continue_ctds_processing_produces_output_after_confirmation(tmp_path: Path) -> None:
+    source = tmp_path / "ctds"
+    _create_basic_ctds_dataset(source)
+
+    processor = _build_processor(tmp_path)
+    pre_result = processor.process_ctds_dataset(str(source), output_name="demo")
+    result = processor.continue_ctds_processing(pre_result, confirmed_type="detection")
+
+    output_path = Path(result["output_path"])
+
+    assert result["success"] is True
+    assert result["detected_dataset_type"] == "detection"
+    assert result["statistics"]["final_count"] == 1
+    assert output_path.exists()
+    assert (output_path / "images").exists()
+    assert (output_path / "labels").exists()
+    assert len(list((output_path / "images").glob("*.jpg"))) == 1
+    assert len(list((output_path / "labels").glob("*.txt"))) == 1
+    assert (output_path / "classes.txt").exists()
+    assert not (source / "obj_train_data" / "sample.jpg").exists()
+    assert not (source / "obj_train_data" / "sample.txt").exists()
+
+
+
+
+def test_continue_ctds_processing_supports_segmentation_confirmation(tmp_path: Path) -> None:
+    source = tmp_path / "ctds-seg"
+    _create_basic_ctds_segmentation_dataset(source)
+
+    processor = _build_processor(tmp_path)
+    pre_result = processor.process_ctds_dataset(str(source), output_name="demo-seg")
+    assert pre_result["stage"] == "pre_detection"
+
+    result = processor.continue_ctds_processing(pre_result, confirmed_type="segmentation")
+    output_path = Path(result["output_path"])
+
+    assert result["success"] is True
+    assert result["detected_dataset_type"] == "segmentation"
+    assert result["statistics"]["final_count"] == 1
+    assert output_path.exists()
+    assert len(list((output_path / "images").glob("*.jpg"))) == 1
+    assert len(list((output_path / "labels").glob("*.txt"))) == 1
 
 
 def test_clean_unmatched_files_dry_run_collects_orphans_without_deleting(tmp_path: Path) -> None:

@@ -22,6 +22,7 @@ from ..processors import (
     LabelProcessor,
     YOLOProcessor,
 )
+from ..workflows import YoloWorkflow
 from .menu import MenuSystem
 
 
@@ -155,6 +156,7 @@ class InteractiveInterface:
             )
 
             processor = self._get_processor("yolo")
+            workflow = YoloWorkflow(processor)
 
             print("\n正在处理CTDS数据集...")
             from pathlib import Path
@@ -162,7 +164,7 @@ class InteractiveInterface:
             dataset_path_obj = Path(dataset_path)
 
             # 第一阶段：预检测和获取项目名称
-            result = processor.process_ctds_dataset(
+            result = workflow.process_ctds_dataset(
                 str(dataset_path_obj),
                 output_name=project_name,
                 keep_empty_labels=keep_empty_labels,
@@ -199,7 +201,7 @@ class InteractiveInterface:
                 )
 
                 # 第二阶段：继续处理
-                result = processor.continue_ctds_processing(
+                result = workflow.continue_ctds_processing(
                     result, confirmed_type, keep_empty_labels=keep_empty_labels
                 )
 
@@ -4020,8 +4022,9 @@ image:
             output_path = output_path or None
 
             processor = self._get_processor("yolo")
+            workflow = YoloWorkflow(processor)
             print("\n正在转换数据集...")
-            result = processor.convert_yolo_to_ctds_dataset(
+            result = workflow.convert_yolo_to_ctds_dataset(
                 dataset_path, output_path=output_path
             )
 

@@ -25,9 +25,11 @@ from .config.exceptions import (
     ProcessingError,
 )
 from .config.settings import ConfigManager
+from .contracts import NormalizedError, OperationResult, normalize_exception
 
 # 导入主要类和函数
 from .core.base import BaseProcessor
+from .workflows import YoloWorkflow
 
 # 定义公共API
 __all__ = [
@@ -37,6 +39,10 @@ __all__ = [
     "FileProcessingError",
     "ConfigurationError",
     "ConfigManager",
+    "OperationResult",
+    "NormalizedError",
+    "normalize_exception",
+    "YoloWorkflow",
     "__version__",
 ]
 
