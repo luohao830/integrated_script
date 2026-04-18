@@ -11,11 +11,7 @@ YOLO数据集处理器
 import json
 import os
 import random
-import re
-import shutil
-import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -31,14 +27,22 @@ from ..core.utils import (  # type: ignore
 )
 from .dataset_processor import DatasetProcessor  # type: ignore
 from .yolo import (
-    build_label_mapping,
     clean_unmatched_files_internal,
     continue_ctds_processing_internal,
     execute_ctds_processing_internal,
     format_duration,
     get_dataset_statistics_internal,
     get_project_name,
+    merge_dataset_parallel_internal,
+    merge_datasets_internal,
+    merge_different_type_datasets_internal,
     process_ctds_dataset_internal,
+    validate_classes_consistency_internal,
+    build_label_mapping_internal,
+    collect_all_classes_info_internal,
+    create_unified_class_mapping_internal,
+    generate_different_output_name_internal,
+    generate_output_name_internal,
 )
 
 
@@ -1420,67 +1424,14 @@ class YOLOProcessor(DatasetProcessor):
         output_name: Optional[str] = None,
         image_prefix: str = "img",
     ) -> Dict[str, Any]:
-        """合并多个YOLO数据集
-
-        Args:
-            dataset_paths: 数据集路径列表
-            output_path: 输出目录路径
-            output_name: 输出数据集名称（可选，默认根据classes.txt生成）
-            image_prefix: 图片前缀名称（默认为"img"）
-
-        Returns:
-            Dict[str, Any]: 合并结果
-        """
-        try:
-            self.logger.info(f"开始合并 {len(dataset_paths)} 个数据集")
-
-            # 验证输入路径
-            validated_paths = []
-            for path in dataset_paths:
-                validated_path = validate_path(path, must_exist=True, must_be_dir=True)
-                validated_paths.append(validated_path)
-
-            # 验证所有数据集的classes.txt是否相同
-            classes_validation = self._validate_classes_consistency(validated_paths)
-            if not classes_validation["consistent"]:
-                raise DatasetError(
-                    f"数据集classes.txt不一致: {classes_validation['details']}"
-                )
-
-            # 获取统一的类别信息
-            common_classes = classes_validation["classes"]
-
-            # 生成输出目录名称
-            if not output_name:
-                output_name = self._generate_output_name(
-                    common_classes, validated_paths
-                )
-
-            # 创建输出目录
-            output_dir = Path(output_path) / output_name
-            create_directory(output_dir)
-
-            # 合并数据集
-            merge_result = self._merge_dataset_files(
-                validated_paths, output_dir, image_prefix, common_classes
-            )
-
-            self.logger.info(f"数据集合并完成: {output_dir}")
-
-            return {
-                "success": True,
-                "output_path": str(output_dir),
-                "output_name": output_name,
-                "merged_datasets": len(validated_paths),
-                "total_images": merge_result["total_images"],
-                "total_labels": merge_result["total_labels"],
-                "classes": common_classes,
-                "statistics": merge_result["statistics"],
-            }
-
-        except Exception as e:
-            self.logger.error(f"数据集合并失败: {str(e)}")
-            raise DatasetError(f"数据集合并失败: {str(e)}")
+        """合并多个YOLO数据集。"""
+        return merge_datasets_internal(
+            self,
+            dataset_paths=dataset_paths,
+            output_path=output_path,
+            output_name=output_name,
+            image_prefix=image_prefix,
+        )
 
     def merge_different_type_datasets(
         self,
@@ -1490,182 +1441,35 @@ class YOLOProcessor(DatasetProcessor):
         image_prefix: str = "img",
         dataset_order: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
-        """合并多个不同类型的YOLO数据集
-
-        Args:
-            dataset_paths: 数据集路径列表
-            output_path: 输出目录路径
-            output_name: 输出数据集名称（可选，默认自动生成）
-            image_prefix: 图片前缀名称（默认为"img"）
-            dataset_order: 数据集处理顺序（可选，默认按输入顺序）
-
-        Returns:
-            Dict[str, Any]: 合并结果
-        """
-        try:
-            self.logger.info(f"开始合并 {len(dataset_paths)} 个不同类型数据集")
-
-            # 验证输入路径
-            validated_paths = []
-            for path in dataset_paths:
-                validated_path = validate_path(path, must_exist=True, must_be_dir=True)
-                validated_paths.append(validated_path)
-
-            # 如果指定了顺序，重新排列数据集
-            if dataset_order:
-                if len(dataset_order) != len(validated_paths):
-                    raise DatasetError("数据集顺序列表长度与数据集数量不匹配")
-                if set(dataset_order) != set(range(len(validated_paths))):
-                    raise DatasetError("数据集顺序列表包含无效索引")
-                validated_paths = [validated_paths[i] for i in dataset_order]
-
-            # 收集所有数据集的类别信息
-            all_classes_info = self._collect_all_classes_info(validated_paths)
-
-            # 生成统一的类别映射
-            unified_classes, class_mappings = self._create_unified_class_mapping(
-                all_classes_info
-            )
-
-            # 生成输出目录名称
-            if not output_name:
-                output_name = self._generate_different_output_name(
-                    unified_classes, validated_paths
-                )
-
-            # 创建输出目录
-            output_dir = Path(output_path) / output_name
-            create_directory(output_dir)
-
-            # 合并数据集
-            merge_result = self._merge_different_dataset_files(
-                validated_paths,
-                output_dir,
-                image_prefix,
-                unified_classes,
-                class_mappings,
-            )
-
-            self.logger.info(f"不同类型数据集合并完成: {output_dir}")
-
-            return {
-                "success": True,
-                "output_path": str(output_dir),
-                "output_name": output_name,
-                "merged_datasets": len(validated_paths),
-                "total_images": merge_result["total_images"],
-                "total_labels": merge_result["total_labels"],
-                "unified_classes": unified_classes,
-                "class_mappings": class_mappings,
-                "statistics": merge_result["statistics"],
-            }
-
-        except Exception as e:
-            self.logger.error(f"不同类型数据集合并失败: {str(e)}")
-            raise DatasetError(f"不同类型数据集合并失败: {str(e)}")
+        """合并多个不同类型的YOLO数据集。"""
+        return merge_different_type_datasets_internal(
+            self,
+            dataset_paths=dataset_paths,
+            output_path=output_path,
+            output_name=output_name,
+            image_prefix=image_prefix,
+            dataset_order=dataset_order,
+        )
 
     def _collect_all_classes_info(
         self, dataset_paths: List[Path]
     ) -> List[Dict[str, Any]]:
-        """收集所有数据集的类别信息
-
-        Args:
-            dataset_paths: 数据集路径列表
-
-        Returns:
-            List[Dict[str, Any]]: 所有数据集的类别信息
-        """
-        all_classes_info = []
-
-        for i, dataset_path in enumerate(dataset_paths):
-            classes_file = dataset_path / self.classes_file
-            if not classes_file.exists():
-                raise DatasetError(
-                    f"数据集 {dataset_path} 缺少 {self.classes_file} 文件"
-                )
-
-            try:
-                with open(classes_file, "r", encoding="utf-8") as f:
-                    classes = [line.strip() for line in f.readlines() if line.strip()]
-
-                all_classes_info.append(
-                    {
-                        "dataset_index": i,
-                        "dataset_path": dataset_path,
-                        "classes": classes,
-                    }
-                )
-            except Exception as e:
-                raise DatasetError(f"读取 {classes_file} 失败: {str(e)}")
-
-        return all_classes_info
+        """收集所有数据集的类别信息。"""
+        return collect_all_classes_info_internal(self, dataset_paths)
 
     def _create_unified_class_mapping(
         self, all_classes_info: List[Dict[str, Any]]
     ) -> Tuple[List[str], List[Dict[int, int]]]:
-        """创建统一的类别映射
-
-        Args:
-            all_classes_info: 所有数据集的类别信息
-
-        Returns:
-            Tuple[List[str], List[Dict[int, int]]]: 统一类别列表和每个数据集的类别映射
-        """
-        # 收集所有唯一的类别名称
-        all_unique_classes = []
-        seen_classes = set()
-
-        for classes_info in all_classes_info:
-            for class_name in classes_info["classes"]:
-                if class_name not in seen_classes:
-                    all_unique_classes.append(class_name)
-                    seen_classes.add(class_name)
-
-        # 为每个数据集创建类别映射
-        class_mappings = []
-        for classes_info in all_classes_info:
-            mapping = {}
-            for old_class_id, class_name in enumerate(classes_info["classes"]):
-                new_class_id = all_unique_classes.index(class_name)
-                mapping[old_class_id] = new_class_id
-            class_mappings.append(mapping)
-
-        return all_unique_classes, class_mappings
+        """创建统一的类别映射。"""
+        return create_unified_class_mapping_internal(self, all_classes_info)
 
     def _generate_different_output_name(
         self, unified_classes: List[str], dataset_paths: List[Path]
     ) -> str:
-        """为不同类型数据集生成输出目录名称
-
-        Args:
-            unified_classes: 统一类别列表
-            dataset_paths: 数据集路径列表
-
-        Returns:
-            str: 输出目录名称
-        """
-        # 计算总图片数量
-        total_images = 0
-        for dataset_path in dataset_paths:
-            image_files = get_file_list(
-                dataset_path, self.image_extensions, recursive=True
-            )
-            total_images += len(image_files)
-
-        # 使用类别名称拼接作为前缀
-        classes_prefix = "_".join(unified_classes[:3])  # 最多使用前3个类别名
-        if len(unified_classes) > 3:
-            classes_prefix += f"_etc{len(unified_classes)}"
-
-        # 生成最终名称
-        output_name = (
-            f"{classes_prefix}_mixed_{len(dataset_paths)}ds_{total_images}imgs"
+        """为不同类型数据集生成输出目录名称。"""
+        return generate_different_output_name_internal(
+            self, unified_classes, dataset_paths
         )
-
-        # 清理文件名中的非法字符
-        output_name = re.sub(r'[<>:"/\\|?*]', "_", output_name)
-
-        return output_name
 
     def _merge_different_dataset_files(
         self,
@@ -1841,92 +1645,14 @@ class YOLOProcessor(DatasetProcessor):
     def _validate_classes_consistency(
         self, dataset_paths: List[Path]
     ) -> Dict[str, Any]:
-        """验证所有数据集的classes.txt是否一致
-
-        Args:
-            dataset_paths: 数据集路径列表
-
-        Returns:
-            Dict[str, Any]: 验证结果
-        """
-        classes_info = []
-
-        for dataset_path in dataset_paths:
-            classes_file = dataset_path / self.classes_file
-            if not classes_file.exists():
-                return {
-                    "consistent": False,
-                    "details": f"数据集 {dataset_path} 缺少 {self.classes_file} 文件",
-                    "classes": None,
-                }
-
-            try:
-                with open(classes_file, "r", encoding="utf-8") as f:
-                    classes = [line.strip() for line in f.readlines() if line.strip()]
-                classes_info.append({"path": dataset_path, "classes": classes})
-            except Exception as e:
-                return {
-                    "consistent": False,
-                    "details": f"读取 {classes_file} 失败: {str(e)}",
-                    "classes": None,
-                }
-
-        # 检查所有数据集的类别是否相同
-        if not classes_info:
-            return {
-                "consistent": False,
-                "details": "没有找到有效的classes.txt文件",
-                "classes": None,
-            }
-
-        reference_classes = classes_info[0]["classes"]
-
-        for info in classes_info[1:]:
-            if info["classes"] != reference_classes:
-                return {
-                    "consistent": False,
-                    "details": f"数据集 {info['path']} 的类别与其他数据集不一致",
-                    "classes": None,
-                }
-
-        return {
-            "consistent": True,
-            "details": "所有数据集的类别一致",
-            "classes": reference_classes,
-        }
+        """验证所有数据集的classes.txt是否一致。"""
+        return validate_classes_consistency_internal(self, dataset_paths)
 
     def _generate_output_name(
         self, classes: List[str], dataset_paths: List[Path]
     ) -> str:
-        """生成输出目录名称
-
-        Args:
-            classes: 类别列表
-            dataset_paths: 数据集路径列表
-
-        Returns:
-            str: 输出目录名称
-        """
-        # 计算总图片数量
-        total_images = 0
-        for dataset_path in dataset_paths:
-            image_files = get_file_list(
-                dataset_path, self.image_extensions, recursive=True
-            )
-            total_images += len(image_files)
-
-        # 使用类别名称拼接作为前缀
-        classes_prefix = "_".join(classes[:3])  # 最多使用前3个类别名
-        if len(classes) > 3:
-            classes_prefix += f"_etc{len(classes)}"
-
-        # 生成最终名称
-        output_name = f"{classes_prefix}_merged_{total_images}imgs"
-
-        # 清理文件名中的非法字符
-        output_name = re.sub(r'[<>:"/\\|?*]', "_", output_name)
-
-        return output_name
+        """生成输出目录名称。"""
+        return generate_output_name_internal(self, classes, dataset_paths)
 
     def _merge_dataset_files(
         self,
@@ -2110,7 +1836,7 @@ class YOLOProcessor(DatasetProcessor):
         Returns:
             Dict[str, Path]: 基础名称到标签文件路径的映射
         """
-        return build_label_mapping(label_files, self.classes_file)
+        return build_label_mapping_internal(self, label_files)
 
     def _format_duration(self, seconds: float) -> str:
         """格式化时间显示
@@ -2147,124 +1873,13 @@ class YOLOProcessor(DatasetProcessor):
         Returns:
             Dict[str, int]: 处理结果统计
         """
-        images_processed = 0
-        labels_processed = 0
-        failed_count = 0
-
-        # 线程安全的计数器
-        lock = threading.Lock()
-
-        def copy_file_batch(batch_args):
-            """批量复制文件对（减少系统调用开销）"""
-            batch_tasks = batch_args
-            batch_images = 0
-            batch_labels = 0
-            batch_failed = 0
-
-            # 批量准备文件操作
-            copy_operations = []
-
-            for img_file, file_index in batch_tasks:
-                try:
-                    # 生成新的文件名
-                    new_name = f"{image_prefix}_{file_index:05d}{img_file.suffix}"
-                    new_img_path = images_dir / new_name
-
-                    # 添加图像复制操作
-                    copy_operations.append((img_file, new_img_path, "image"))
-
-                    # 查找对应的标签文件
-                    base_name = img_file.stem
-                    label_file = label_mapping.get(base_name)
-
-                    if label_file and label_file.exists():
-                        new_label_name = f"{image_prefix}_{file_index:05d}.txt"
-                        new_label_path = labels_dir / new_label_name
-                        copy_operations.append((label_file, new_label_path, "label"))
-
-                except Exception as e:
-                    self.logger.error(f"准备文件操作失败 {img_file}: {str(e)}")
-                    batch_failed += 1
-
-            # 批量执行文件复制
-            for src_file, dst_file, file_type in copy_operations:
-                try:
-                    # 使用更高效的复制方法
-                    if not dst_file.parent.exists():
-                        dst_file.parent.mkdir(parents=True, exist_ok=True)
-
-                    # 对于小文件使用shutil.copy2，对于大文件使用shutil.copyfile
-                    if src_file.stat().st_size < 1024 * 1024:  # 1MB以下
-                        shutil.copy2(src_file, dst_file)
-                    else:
-                        shutil.copyfile(src_file, dst_file)
-
-                    if file_type == "image":
-                        batch_images += 1
-                    else:
-                        batch_labels += 1
-
-                except Exception as e:
-                    self.logger.error(
-                        f"复制文件失败 {src_file} -> {dst_file}: {str(e)}"
-                    )
-                    batch_failed += 1
-
-            # 线程安全更新计数器
-            with lock:
-                nonlocal images_processed, labels_processed, failed_count
-                images_processed += batch_images
-                labels_processed += batch_labels
-                failed_count += batch_failed
-
-            return len(batch_tasks)
-
-        # 准备任务参数
-        tasks = [(img_file, start_index + i) for i, img_file in enumerate(image_files)]
-
-        # 批量处理参数（优化点3：减少线程创建开销）
-        batch_size = max(1, len(tasks) // (os.cpu_count() or 4))  # 每个线程处理的文件数
-        batch_size = min(batch_size, 100)  # 限制批次大小，避免内存过大
-
-        # 将任务分批
-        batches = [tasks[i : i + batch_size] for i in range(0, len(tasks), batch_size)]
-
-        # 确定线程数（基于批次数量）
-        max_workers = min(len(batches), (os.cpu_count() or 4) * 2, 16)
-
-        self.logger.info(
-            f"使用 {max_workers} 个线程处理 {len(batches)} 个批次，每批次 {batch_size} 个文件"
+        return merge_dataset_parallel_internal(
+            self,
+            image_files=image_files,
+            images_dir=images_dir,
+            labels_dir=labels_dir,
+            image_prefix=image_prefix,
+            start_index=start_index,
+            label_mapping=label_mapping,
+            dataset_num=dataset_num,
         )
-
-        # 使用进度条显示处理进度
-        with progress_context(
-            len(image_files), f"并行合并数据集 {dataset_num}"
-        ) as progress:
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # 提交批量任务
-                future_to_batch = {
-                    executor.submit(copy_file_batch, batch): batch for batch in batches
-                }
-
-                # 处理完成的批次
-                for future in as_completed(future_to_batch):
-                    try:
-                        processed_count = future.result()
-                        progress.update_progress(processed_count)
-                    except Exception as e:
-                        batch = future_to_batch[future]
-                        self.logger.error(
-                            f"批次执行异常 (批次大小: {len(batch)}): {str(e)}"
-                        )
-                        progress.update_progress(len(batch))
-
-        if failed_count > 0:
-            self.logger.warning(
-                f"数据集 {dataset_num} 有 {failed_count} 个文件复制失败"
-            )
-
-        return {
-            "images_processed": images_processed,
-            "labels_processed": labels_processed,
-            "failed_count": failed_count,
-        }

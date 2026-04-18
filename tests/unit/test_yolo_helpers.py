@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -341,4 +341,331 @@ def test_processor_facade_get_project_name_delegates_to_internal_helper(
         "self": processor,
         "obj_names_path": obj_names_path,
         "manual_name": "demo",
+    }
+
+
+@pytest.mark.unit
+def test_processor_facade_merge_datasets_delegates_to_internal_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+    expected = {"success": True, "merged_datasets": 2}
+
+    captured: Dict[str, Any] = {}
+
+    def fake_merge_datasets_internal(
+        self: YOLOProcessor,
+        dataset_paths: List[str],
+        output_path: str,
+        output_name: Optional[str],
+        image_prefix: str,
+    ) -> Dict[str, Any]:
+        captured["self"] = self
+        captured["dataset_paths"] = dataset_paths
+        captured["output_path"] = output_path
+        captured["output_name"] = output_name
+        captured["image_prefix"] = image_prefix
+        return expected
+
+    monkeypatch.setattr(
+        yolo_processor,
+        "merge_datasets_internal",
+        fake_merge_datasets_internal,
+    )
+
+    result = processor.merge_datasets(
+        ["/tmp/d1", "/tmp/d2"],
+        "/tmp/out",
+        output_name="merged",
+        image_prefix="frame",
+    )
+
+    assert result == expected
+    assert captured == {
+        "self": processor,
+        "dataset_paths": ["/tmp/d1", "/tmp/d2"],
+        "output_path": "/tmp/out",
+        "output_name": "merged",
+        "image_prefix": "frame",
+    }
+
+
+@pytest.mark.unit
+def test_processor_facade_merge_different_type_datasets_delegates_to_internal_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+    expected = {"success": True, "merged_datasets": 2, "unified_classes": ["car"]}
+
+    captured: Dict[str, Any] = {}
+
+    def fake_merge_different_type_datasets_internal(
+        self: YOLOProcessor,
+        dataset_paths: List[str],
+        output_path: str,
+        output_name: Optional[str],
+        image_prefix: str,
+        dataset_order: Optional[List[int]],
+    ) -> Dict[str, Any]:
+        captured["self"] = self
+        captured["dataset_paths"] = dataset_paths
+        captured["output_path"] = output_path
+        captured["output_name"] = output_name
+        captured["image_prefix"] = image_prefix
+        captured["dataset_order"] = dataset_order
+        return expected
+
+    monkeypatch.setattr(
+        yolo_processor,
+        "merge_different_type_datasets_internal",
+        fake_merge_different_type_datasets_internal,
+    )
+
+    result = processor.merge_different_type_datasets(
+        ["/tmp/d1", "/tmp/d2"],
+        "/tmp/out",
+        output_name="merged",
+        image_prefix="frame",
+        dataset_order=[1, 0],
+    )
+
+    assert result == expected
+    assert captured == {
+        "self": processor,
+        "dataset_paths": ["/tmp/d1", "/tmp/d2"],
+        "output_path": "/tmp/out",
+        "output_name": "merged",
+        "image_prefix": "frame",
+        "dataset_order": [1, 0],
+    }
+
+
+@pytest.mark.unit
+def test_processor_facade_validate_classes_consistency_delegates_to_internal_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+    expected = {"consistent": True, "classes": ["car"], "details": "ok"}
+
+    captured: Dict[str, Any] = {}
+
+    def fake_validate_classes_consistency_internal(
+        self: YOLOProcessor,
+        dataset_paths: List[Path],
+    ) -> Dict[str, Any]:
+        captured["self"] = self
+        captured["dataset_paths"] = dataset_paths
+        return expected
+
+    monkeypatch.setattr(
+        yolo_processor,
+        "validate_classes_consistency_internal",
+        fake_validate_classes_consistency_internal,
+    )
+
+    paths = [Path("/tmp/d1"), Path("/tmp/d2")]
+    result = processor._validate_classes_consistency(paths)
+
+    assert result == expected
+    assert captured == {"self": processor, "dataset_paths": paths}
+
+
+@pytest.mark.unit
+def test_processor_facade_generate_output_name_delegates_to_internal_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+
+    captured: Dict[str, Any] = {}
+
+    def fake_generate_output_name_internal(
+        self: YOLOProcessor,
+        classes: List[str],
+        dataset_paths: List[Path],
+    ) -> str:
+        captured["self"] = self
+        captured["classes"] = classes
+        captured["dataset_paths"] = dataset_paths
+        return "merged_name"
+
+    monkeypatch.setattr(
+        yolo_processor,
+        "generate_output_name_internal",
+        fake_generate_output_name_internal,
+    )
+
+    paths = [Path("/tmp/d1"), Path("/tmp/d2")]
+    result = processor._generate_output_name(["car"], paths)
+
+    assert result == "merged_name"
+    assert captured == {
+        "self": processor,
+        "classes": ["car"],
+        "dataset_paths": paths,
+    }
+
+
+@pytest.mark.unit
+def test_processor_facade_collect_all_classes_info_delegates_to_internal_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+    expected = [{"dataset_index": 0, "classes": ["car"]}]
+
+    captured: Dict[str, Any] = {}
+
+    def fake_collect_all_classes_info_internal(
+        self: YOLOProcessor,
+        dataset_paths: List[Path],
+    ) -> List[Dict[str, Any]]:
+        captured["self"] = self
+        captured["dataset_paths"] = dataset_paths
+        return expected
+
+    monkeypatch.setattr(
+        yolo_processor,
+        "collect_all_classes_info_internal",
+        fake_collect_all_classes_info_internal,
+    )
+
+    paths = [Path("/tmp/d1")]
+    result = processor._collect_all_classes_info(paths)
+
+    assert result == expected
+    assert captured == {"self": processor, "dataset_paths": paths}
+
+
+@pytest.mark.unit
+def test_processor_facade_create_unified_class_mapping_delegates_to_internal_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+    classes_info = [{"classes": ["car"]}]
+    expected = (["car"], [{0: 0}])
+
+    captured: Dict[str, Any] = {}
+
+    def fake_create_unified_class_mapping_internal(
+        self: YOLOProcessor,
+        all_classes_info: List[Dict[str, Any]],
+    ) -> tuple[List[str], List[Dict[int, int]]]:
+        captured["self"] = self
+        captured["all_classes_info"] = all_classes_info
+        return expected
+
+    monkeypatch.setattr(
+        yolo_processor,
+        "create_unified_class_mapping_internal",
+        fake_create_unified_class_mapping_internal,
+    )
+
+    result = processor._create_unified_class_mapping(classes_info)
+
+    assert result == expected
+    assert captured == {"self": processor, "all_classes_info": classes_info}
+
+
+@pytest.mark.unit
+def test_processor_facade_generate_different_output_name_delegates_to_internal_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+
+    captured: Dict[str, Any] = {}
+
+    def fake_generate_different_output_name_internal(
+        self: YOLOProcessor,
+        unified_classes: List[str],
+        dataset_paths: List[Path],
+    ) -> str:
+        captured["self"] = self
+        captured["unified_classes"] = unified_classes
+        captured["dataset_paths"] = dataset_paths
+        return "mixed_name"
+
+    monkeypatch.setattr(
+        yolo_processor,
+        "generate_different_output_name_internal",
+        fake_generate_different_output_name_internal,
+    )
+
+    paths = [Path("/tmp/d1"), Path("/tmp/d2")]
+    result = processor._generate_different_output_name(["car"], paths)
+
+    assert result == "mixed_name"
+    assert captured == {
+        "self": processor,
+        "unified_classes": ["car"],
+        "dataset_paths": paths,
+    }
+
+
+@pytest.mark.unit
+def test_processor_facade_merge_dataset_parallel_delegates_to_internal_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+    expected = {"images_processed": 1, "labels_processed": 1, "failed_count": 0}
+
+    captured: Dict[str, Any] = {}
+
+    def fake_merge_dataset_parallel_internal(
+        self: YOLOProcessor,
+        image_files: List[Path],
+        images_dir: Path,
+        labels_dir: Path,
+        image_prefix: str,
+        start_index: int,
+        label_mapping: Dict[str, Path],
+        dataset_num: int,
+    ) -> Dict[str, int]:
+        captured["self"] = self
+        captured["image_files"] = image_files
+        captured["images_dir"] = images_dir
+        captured["labels_dir"] = labels_dir
+        captured["image_prefix"] = image_prefix
+        captured["start_index"] = start_index
+        captured["label_mapping"] = label_mapping
+        captured["dataset_num"] = dataset_num
+        return expected
+
+    monkeypatch.setattr(
+        yolo_processor,
+        "merge_dataset_parallel_internal",
+        fake_merge_dataset_parallel_internal,
+    )
+
+    image_files = [Path("/tmp/a.jpg")]
+    images_dir = Path("/tmp/out/images")
+    labels_dir = Path("/tmp/out/labels")
+    label_mapping = {"a": Path("/tmp/a.txt")}
+
+    result = processor._merge_dataset_parallel(
+        image_files=image_files,
+        images_dir=images_dir,
+        labels_dir=labels_dir,
+        image_prefix="img",
+        start_index=1,
+        label_mapping=label_mapping,
+        dataset_num=1,
+    )
+
+    assert result == expected
+    assert captured == {
+        "self": processor,
+        "image_files": image_files,
+        "images_dir": images_dir,
+        "labels_dir": labels_dir,
+        "image_prefix": "img",
+        "start_index": 1,
+        "label_mapping": label_mapping,
+        "dataset_num": 1,
     }

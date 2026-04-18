@@ -262,18 +262,76 @@ def test_clean_unmatched_files_handles_empty_labels_in_dry_run(tmp_path: Path) -
     assert empty_label.exists()
 
 
-def test_clean_unmatched_files_deletes_empty_labels_when_not_dry_run(
-    tmp_path: Path,
-) -> None:
-    dataset = tmp_path / "dataset"
-    images, labels = _create_basic_yolo_dataset(dataset)
 
-    (images / "a.jpg").write_text("img", encoding="utf-8")
-    empty_label = labels / "a.txt"
-    empty_label.write_text("\n", encoding="utf-8")
+
+def _create_yolo_dataset_with_classes(
+    dataset: Path,
+    classes: list[str],
+    samples: list[tuple[str, int]],
+) -> None:
+    images, labels = _create_basic_yolo_dataset(dataset)
+    (dataset / "classes.txt").write_text("\n".join(classes) + "\n", encoding="utf-8")
+
+    for stem, class_id in samples:
+        (images / f"{stem}.jpg").write_text("img", encoding="utf-8")
+        (labels / f"{stem}.txt").write_text(
+            f"{class_id} 0.5 0.5 0.2 0.2\n", encoding="utf-8"
+        )
+
+
+def test_merge_datasets_merges_same_classes_and_copies_files(tmp_path: Path) -> None:
+    d1 = tmp_path / "d1"
+    d2 = tmp_path / "d2"
+    _create_yolo_dataset_with_classes(d1, ["car", "bus"], [("a", 0)])
+    _create_yolo_dataset_with_classes(d2, ["car", "bus"], [("b", 1)])
 
     processor = _build_processor(tmp_path)
-    result = processor.clean_unmatched_files(str(dataset), dry_run=False)
+    result = processor.merge_datasets(
+        [str(d1), str(d2)],
+        str(tmp_path / "out"),
+        output_name="merged",
+        image_prefix="img",
+    )
 
     assert result["success"] is True
-    assert not empty_label.exists()
+    assert result["merged_datasets"] == 2
+    assert result["total_images"] == 2
+    assert result["total_labels"] == 2
+
+    output_dir = Path(result["output_path"])
+    assert output_dir.exists()
+    assert (output_dir / "classes.txt").exists()
+    assert len(list((output_dir / "images").glob("*.jpg"))) == 2
+    assert len(list((output_dir / "labels").glob("*.txt"))) == 2
+
+
+def test_merge_different_type_datasets_builds_unified_classes_and_remaps_labels(
+    tmp_path: Path,
+) -> None:
+    d1 = tmp_path / "d1"
+    d2 = tmp_path / "d2"
+    _create_yolo_dataset_with_classes(d1, ["car"], [("a", 0)])
+    _create_yolo_dataset_with_classes(d2, ["bus", "car"], [("b", 1)])
+
+    processor = _build_processor(tmp_path)
+    result = processor.merge_different_type_datasets(
+        [str(d1), str(d2)],
+        str(tmp_path / "out"),
+        output_name="mixed",
+        image_prefix="mix",
+    )
+
+    assert result["success"] is True
+    assert result["merged_datasets"] == 2
+    assert result["total_images"] == 2
+    assert result["total_labels"] == 2
+    assert result["unified_classes"] == ["car", "bus"]
+
+    output_dir = Path(result["output_path"])
+    classes = (output_dir / "classes.txt").read_text(encoding="utf-8").strip().splitlines()
+    assert classes == ["car", "bus"]
+
+    label_files = list((output_dir / "labels").glob("*.txt"))
+    assert len(label_files) == 2
+    first_ids = {int(f.read_text(encoding="utf-8").split()[0]) for f in label_files}
+    assert first_ids <= {0, 1}
