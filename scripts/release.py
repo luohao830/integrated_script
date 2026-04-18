@@ -19,18 +19,78 @@ import requests
 from version_manager import VersionManager
 
 
+class SubprocessExecutor:
+    """本地命令执行器"""
+
+    def run(
+        self,
+        cmd,
+        cwd: Optional[Path] = None,
+        capture_output: bool = False,
+        text: bool = False,
+        check: bool = False,
+        timeout: Optional[int] = None,
+    ):
+        return subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=capture_output,
+            text=text,
+            check=check,
+            timeout=timeout,
+        )
+
+
+class GitHubActionsClient:
+    """GitHub Actions API 客户端"""
+
+    def __init__(self, api_url: Optional[str] = None):
+        self.api_url = (
+            api_url
+            or "https://api.github.com/repos/luohao091/integrated_script/actions/runs"
+        )
+
+    def get_workflow_runs(self) -> Dict[str, Any]:
+        response = requests.get(self.api_url, timeout=10)
+        response.raise_for_status()
+        return response.json()
+
+
+class SystemClock:
+    """时间抽象"""
+
+    @staticmethod
+    def sleep(seconds: int) -> None:
+        time.sleep(seconds)
+
+    @staticmethod
+    def now() -> float:
+        return time.time()
+
+
 class ReleaseManager:
     """发布管理器"""
 
-    def __init__(self, project_root: Optional[Path] = None):
+    def __init__(
+        self,
+        project_root: Optional[Path] = None,
+        local_executor: Optional[SubprocessExecutor] = None,
+        github_client: Optional[GitHubActionsClient] = None,
+        clock: Optional[SystemClock] = None,
+        python_executable: Optional[str] = None,
+    ):
         self.project_root = project_root or Path(__file__).parent.parent
         self.vm = VersionManager(self.project_root)
+        self.local_executor = local_executor or SubprocessExecutor()
+        self.github_client = github_client or GitHubActionsClient()
+        self.clock = clock or SystemClock()
+        self.python_executable = python_executable or sys.executable
 
     def check_git_status(self) -> bool:
         """检查 Git 状态"""
         try:
             # 检查是否有未提交的更改
-            result = subprocess.run(
+            result = self.local_executor.run(
                 ["git", "status", "--porcelain"],
                 capture_output=True,
                 text=True,
@@ -67,8 +127,10 @@ class ReleaseManager:
 
         try:
             # 尝试运行 pytest
-            subprocess.run(
-                ["python", "-m", "pytest", "-v"], cwd=self.project_root, check=True
+            self.local_executor.run(
+                [self.python_executable, "-m", "pytest", "-v"],
+                cwd=self.project_root,
+                check=True,
             )
 
             print("✅ 所有测试通过")
@@ -91,8 +153,10 @@ class ReleaseManager:
             return False
 
         try:
-            subprocess.run(
-                ["python", "build_exe.py"], cwd=self.project_root, check=True
+            self.local_executor.run(
+                [self.python_executable, "build_exe.py"],
+                cwd=self.project_root,
+                check=True,
             )
 
             # 检查生成的文件
@@ -120,8 +184,11 @@ class ReleaseManager:
 
         try:
             # 测试 --version 参数
-            result = subprocess.run(
-                [str(exe_path), "--version"], capture_output=True, text=True, timeout=30
+            result = self.local_executor.run(
+                [str(exe_path), "--version"],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
 
             if result.returncode == 0:
@@ -144,7 +211,7 @@ class ReleaseManager:
 
         try:
             # 获取当前分支名
-            result = subprocess.run(
+            result = self.local_executor.run(
                 ["git", "branch", "--show-current"],
                 capture_output=True,
                 text=True,
@@ -153,11 +220,11 @@ class ReleaseManager:
             current_branch = result.stdout.strip()
 
             # 推送当前分支
-            subprocess.run(["git", "push", "origin", current_branch], check=True)
+            self.local_executor.run(["git", "push", "origin", current_branch], check=True)
             print(f"✅ 已推送分支 {current_branch}")
 
             # 推送标签
-            subprocess.run(["git", "push", "origin", f"v{version}"], check=True)
+            self.local_executor.run(["git", "push", "origin", f"v{version}"], check=True)
             print(f"✅ 已推送标签 v{version}")
 
             return True
@@ -169,16 +236,7 @@ class ReleaseManager:
     def get_github_workflow_status(self, version: str) -> Dict[str, Any]:
         """获取 GitHub Actions 工作流状态"""
         try:
-            # GitHub API URL
-            api_url = (
-                "https://api.github.com/repos/luohao091/integrated_script/actions/runs"
-            )
-
-            # 发送请求
-            response = requests.get(api_url, timeout=10)
-            response.raise_for_status()
-
-            data = response.json()
+            data = self.github_client.get_workflow_runs()
 
             # 首先查找与当前版本完全匹配的工作流
             target_branch = f"v{version}"
@@ -225,13 +283,13 @@ class ReleaseManager:
 
         # 等待GitHub触发新的工作流（标签推送后需要一些时间）
         print("   🕐 等待 GitHub 触发新工作流...")
-        time.sleep(15)  # 等待15秒让GitHub有时间触发工作流
+        self.clock.sleep(15)  # 等待15秒让GitHub有时间触发工作流
 
-        start_time = time.time()
+        start_time = self.clock.now()
         check_interval = 15  # 每30秒检查一次
         consecutive_old_workflow_count = 0  # 连续找到旧工作流的次数
 
-        while time.time() - start_time < timeout:
+        while self.clock.now() - start_time < timeout:
             # 获取工作流状态
             status_info = self.get_github_workflow_status(version)
 
@@ -303,9 +361,9 @@ class ReleaseManager:
                         return False  # 避免无限等待
 
             # 等待下次检查
-            elapsed = int(time.time() - start_time)
+            elapsed = int(self.clock.now() - start_time)
             print(f"   等待中... ({elapsed}s/{timeout}s)")
-            time.sleep(check_interval)
+            self.clock.sleep(check_interval)
 
         print("⏰ 等待超时，请手动检查 GitHub Actions 状态")
         return False
@@ -376,7 +434,7 @@ class ReleaseManager:
         else:
             # 获取当前分支名用于显示
             try:
-                result = subprocess.run(
+                result = self.local_executor.run(
                     ["git", "branch", "--show-current"],
                     capture_output=True,
                     text=True,
