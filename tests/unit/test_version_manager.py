@@ -26,6 +26,27 @@ def test_update_main_version_updates_double_quote_version_pattern(tmp_path: Path
     assert "version=\"%(prog)s 2.1.0\"" in updated
 
 
+def test_update_main_version_skips_when_main_uses_dynamic_get_version(tmp_path: Path) -> None:
+    project_root = tmp_path
+    (project_root / "src" / "integrated_script").mkdir(parents=True)
+
+    main_file = project_root / "src" / "integrated_script" / "main.py"
+    original = (
+        'parser.add_argument("--version", action="version", '
+        'version=f"%(prog)s {get_version()}")\n'
+    )
+    main_file.write_text(original, encoding="utf-8")
+
+    pyproject_file = project_root / "pyproject.toml"
+    pyproject_file.write_text('[project]\nname="demo"\nversion="1.0.0"\n', encoding="utf-8")
+
+    vm = VersionManager(project_root=project_root)
+    vm.update_main_version("2.1.0")
+
+    updated = main_file.read_text(encoding="utf-8")
+    assert updated == original
+
+
 def test_update_pyproject_version_only_updates_project_section(tmp_path: Path) -> None:
     project_root = tmp_path
     pyproject_file = project_root / "pyproject.toml"

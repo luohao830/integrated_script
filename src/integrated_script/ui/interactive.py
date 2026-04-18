@@ -3223,7 +3223,12 @@ image:
             config_file = self._get_path_input("请输入配置文件路径: ", must_exist=True)
 
             # 创建新的ConfigManager实例来加载指定文件
-            temp_config = ConfigManager(config_file=config_file, auto_save=False)
+            temp_config = ConfigManager(
+                config_file=config_file,
+                auto_save=False,
+                load_on_init=False,
+            )
+            temp_config.load_from_file(config_file)
 
             # 将加载的配置更新到当前配置管理器
             loaded_config = temp_config.get_all()
@@ -3246,14 +3251,7 @@ image:
             print("\n=== 保存配置文件 ===")
 
             config_file = self._get_input("请输入配置文件路径: ", required=True)
-
-            # 创建新的ConfigManager实例来保存到指定文件
-            temp_config = ConfigManager(config_file=config_file, auto_save=False)
-
-            # 将当前配置更新到临时配置管理器并保存
-            current_config = self.config_manager.get_all()
-            temp_config.update(current_config)
-            temp_config.save()
+            self.config_manager.save_to_file(config_file)
 
             print(f"\n配置已保存到: {config_file}")
 
@@ -3265,6 +3263,7 @@ image:
             print(f"\n保存配置失败: {e}")
 
         self._pause()
+
 
     def _config_reset(self) -> None:
         """重置为默认配置"""
@@ -3375,22 +3374,26 @@ image:
 
             print("\n请输入新的路径配置 (留空保持不变):")
 
-            # 获取新的路径配置
+            updates: Dict[str, Any] = {"paths": {}}
+
             input_dir = self._get_input(f"输入目录 [{paths.get('input_dir', '')}]: ")
             if input_dir:
-                self.config_manager.set("paths.input_dir", input_dir)
+                updates["paths"]["input_dir"] = input_dir
 
             output_dir = self._get_input(f"输出目录 [{paths.get('output_dir', '')}]: ")
             if output_dir:
-                self.config_manager.set("paths.output_dir", output_dir)
+                updates["paths"]["output_dir"] = output_dir
 
             temp_dir = self._get_input(f"临时目录 [{paths.get('temp_dir', 'temp')}]: ")
             if temp_dir:
-                self.config_manager.set("paths.temp_dir", temp_dir)
+                updates["paths"]["temp_dir"] = temp_dir
 
             log_dir = self._get_input(f"日志目录 [{paths.get('log_dir', 'logs')}]: ")
             if log_dir:
-                self.config_manager.set("paths.log_dir", log_dir)
+                updates["paths"]["log_dir"] = log_dir
+
+            if updates["paths"]:
+                self.config_manager.update(updates)
 
             print("\n✅ 路径配置已更新")
         except Exception as e:
@@ -3413,14 +3416,15 @@ image:
 
             print("\n请输入新的处理配置 (留空保持不变):")
 
-            # 获取新的处理配置
+            updates: Dict[str, Any] = {"processing": {}}
+
             batch_size = self._get_int_input(
                 f"批处理大小 [{processing.get('batch_size', 100)}]: ",
                 min_val=1,
                 max_val=1000,
             )
             if batch_size is not None:
-                self.config_manager.set("processing.batch_size", batch_size)
+                updates["processing"]["batch_size"] = batch_size
 
             import os
 
@@ -3428,10 +3432,10 @@ image:
             max_workers = self._get_int_input(
                 f"最大工作线程 [{processing.get('max_workers', 4)}]: ",
                 min_val=1,
-                max_val=cpu_count,  # 最大值设置为机器的CPU核心数
+                max_val=cpu_count,
             )
             if max_workers is not None:
-                self.config_manager.set("processing.max_workers", max_workers)
+                updates["processing"]["max_workers"] = max_workers
 
             timeout = self._get_int_input(
                 f"超时时间(秒) [{processing.get('timeout', 300)}]: ",
@@ -3439,7 +3443,7 @@ image:
                 max_val=3600,
             )
             if timeout is not None:
-                self.config_manager.set("processing.timeout", timeout)
+                updates["processing"]["timeout"] = timeout
 
             retry_count = self._get_int_input(
                 f"重试次数 [{processing.get('retry_count', 3)}]: ",
@@ -3447,7 +3451,10 @@ image:
                 max_val=10,
             )
             if retry_count is not None:
-                self.config_manager.set("processing.retry_count", retry_count)
+                updates["processing"]["retry_count"] = retry_count
+
+            if updates["processing"]:
+                self.config_manager.update(updates)
 
             print("\n✅ 处理配置已更新")
         except Exception as e:
@@ -3474,7 +3481,8 @@ image:
 
             print("\n请输入新的图像处理配置 (留空保持不变):")
 
-            # 获取新的图像处理配置
+            updates: Dict[str, Any] = {"image_processing": {}}
+
             output_format = self._get_input(
                 f"默认输出格式 (jpg/png/webp) [{image_config.get('default_output_format', 'jpg')}]: "
             )
@@ -3484,9 +3492,7 @@ image:
                 "png",
                 "webp",
             ]:
-                self.config_manager.set(
-                    "image_processing.default_output_format", output_format.lower()
-                )
+                updates["image_processing"]["default_output_format"] = output_format.lower()
 
             jpeg_quality = self._get_int_input(
                 f"JPEG质量 (1-100) [{image_config.get('jpeg_quality', 95)}]: ",
@@ -3494,7 +3500,7 @@ image:
                 max_val=100,
             )
             if jpeg_quality is not None:
-                self.config_manager.set("image_processing.jpeg_quality", jpeg_quality)
+                updates["image_processing"]["jpeg_quality"] = jpeg_quality
 
             png_compression = self._get_int_input(
                 f"PNG压缩级别 (0-9) [{image_config.get('png_compression', 6)}]: ",
@@ -3502,9 +3508,7 @@ image:
                 max_val=9,
             )
             if png_compression is not None:
-                self.config_manager.set(
-                    "image_processing.png_compression", png_compression
-                )
+                updates["image_processing"]["png_compression"] = png_compression
 
             webp_quality = self._get_int_input(
                 f"WebP质量 (1-100) [{image_config.get('webp_quality', 90)}]: ",
@@ -3512,29 +3516,25 @@ image:
                 max_val=100,
             )
             if webp_quality is not None:
-                self.config_manager.set("image_processing.webp_quality", webp_quality)
+                updates["image_processing"]["webp_quality"] = webp_quality
 
             auto_orient = self._get_yes_no_input(
                 f"自动旋转 [{image_config.get('auto_orient', True)}]: "
             )
             if auto_orient is not None:
-                self.config_manager.set("image_processing.auto_orient", auto_orient)
+                updates["image_processing"]["auto_orient"] = auto_orient
 
             strip_metadata = self._get_yes_no_input(
                 f"移除元数据 [{image_config.get('strip_metadata', False)}]: "
             )
             if strip_metadata is not None:
-                self.config_manager.set(
-                    "image_processing.strip_metadata", strip_metadata
-                )
+                updates["image_processing"]["strip_metadata"] = strip_metadata
 
             parallel_processing = self._get_yes_no_input(
                 f"并行处理 [{image_config.get('parallel_processing', True)}]: "
             )
             if parallel_processing is not None:
-                self.config_manager.set(
-                    "image_processing.parallel_processing", parallel_processing
-                )
+                updates["image_processing"]["parallel_processing"] = parallel_processing
 
             chunk_size = self._get_int_input(
                 f"分块大小 [{image_config.get('chunk_size', 50)}]: ",
@@ -3542,13 +3542,17 @@ image:
                 max_val=1000,
             )
             if chunk_size is not None:
-                self.config_manager.set("image_processing.chunk_size", chunk_size)
+                updates["image_processing"]["chunk_size"] = chunk_size
+
+            if updates["image_processing"]:
+                self.config_manager.update(updates)
 
             print("\n✅ 图像处理配置已更新")
         except Exception as e:
             print(f"\n修改图像处理配置失败: {e}")
 
         self._pause()
+
 
     def _config_modify_yolo(self) -> None:
         """修改YOLO配置"""
@@ -3565,32 +3569,37 @@ image:
 
             print("\n请输入新的YOLO配置 (留空保持不变):")
 
-            # 获取新的YOLO配置
+            updates: Dict[str, Any] = {"yolo": {}}
+
             label_format = self._get_input(
                 f"标签格式 [{yolo_config.get('label_format', '.txt')}]: "
             )
             if label_format:
                 if not label_format.startswith("."):
                     label_format = "." + label_format
-                self.config_manager.set("yolo.label_format", label_format)
+                updates["yolo"]["label_format"] = label_format
 
             classes_file = self._get_input(
                 f"类别文件 [{yolo_config.get('classes_file', 'classes.txt')}]: "
             )
             if classes_file:
-                self.config_manager.set("yolo.classes_file", classes_file)
+                updates["yolo"]["classes_file"] = classes_file
 
             validate_on_load = self._get_yes_no_input(
                 f"加载时验证 [{yolo_config.get('validate_on_load', True)}]: "
             )
             if validate_on_load is not None:
-                self.config_manager.set("yolo.validate_on_load", validate_on_load)
+                updates["yolo"]["validate_on_load"] = validate_on_load
+
+            if updates["yolo"]:
+                self.config_manager.update(updates)
 
             print("\n✅ YOLO配置已更新")
         except Exception as e:
             print(f"\n修改YOLO配置失败: {e}")
 
         self._pause()
+
 
     def _config_modify_ui(self) -> None:
         """修改界面配置"""
@@ -3606,30 +3615,35 @@ image:
 
             print("\n请输入新的界面配置 (留空保持不变):")
 
-            # 获取新的界面配置
+            updates: Dict[str, Any] = {"ui": {}}
+
             language = self._get_input(
                 f"语言 (zh_CN/en_US) [{ui_config.get('language', 'zh_CN')}]: "
             )
             if language and language in ["zh_CN", "en_US"]:
-                self.config_manager.set("ui.language", language)
+                updates["ui"]["language"] = language
 
             theme = self._get_input(
                 f"主题 (default/dark/light) [{ui_config.get('theme', 'default')}]: "
             )
             if theme and theme in ["default", "dark", "light"]:
-                self.config_manager.set("ui.theme", theme)
+                updates["ui"]["theme"] = theme
 
             show_progress = self._get_yes_no_input(
                 f"显示进度 [{ui_config.get('show_progress', True)}]: "
             )
             if show_progress is not None:
-                self.config_manager.set("ui.show_progress", show_progress)
+                updates["ui"]["show_progress"] = show_progress
+
+            if updates["ui"]:
+                self.config_manager.update(updates)
 
             print("\n✅ 界面配置已更新")
         except Exception as e:
             print(f"\n修改界面配置失败: {e}")
 
         self._pause()
+
 
     def _return_to_main_menu(self) -> None:
         """返回主菜单"""

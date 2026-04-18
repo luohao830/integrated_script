@@ -16,6 +16,7 @@ from typing import List, Optional
 from .config import ConfigManager
 from .core.logging_config import get_logger, setup_logging
 from .ui.interactive import InteractiveInterface
+from .version import get_version
 
 
 def setup_argument_parser():
@@ -40,7 +41,7 @@ def setup_argument_parser():
     )
 
     # 全局选项
-    parser.add_argument("--version", action="version", version="%(prog)s 2.0.0")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {get_version()}")
 
     parser.add_argument("--config", type=str, help="配置文件路径 (JSON或YAML格式)")
 
@@ -101,7 +102,8 @@ def load_config_from_args(args) -> ConfigManager:
         return ConfigManager()
 
     try:
-        config_manager = ConfigManager(config_file=args.config)
+        config_manager = ConfigManager(config_file=args.config, load_on_init=False)
+        config_manager.load_from_file(args.config)
         logger = get_logger(__name__)
         logger.info(f"已加载配置文件: {args.config}")
         return config_manager

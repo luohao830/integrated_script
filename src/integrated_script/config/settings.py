@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional, Union
 
 import yaml  # type: ignore[import-untyped]
 
+from ..version import get_version
 from .exceptions import ConfigurationError, FileProcessingError
 
 
@@ -31,7 +32,7 @@ class ConfigManager:
     """
 
     DEFAULT_CONFIG: Dict[str, Any] = {
-        "version": "1.0.0",
+        "version": get_version(),
         "debug": False,
         "log_level": "INFO",
         "paths": {
@@ -80,13 +81,17 @@ class ConfigManager:
     }
 
     def __init__(
-        self, config_file: Optional[Union[str, Path]] = None, auto_save: bool = True
+        self,
+        config_file: Optional[Union[str, Path]] = None,
+        auto_save: bool = True,
+        load_on_init: bool = True,
     ):
         """初始化配置管理器
 
         Args:
             config_file: 配置文件路径，默认为当前目录下的config.json
             auto_save: 是否自动保存配置更改
+            load_on_init: 初始化时是否立即加载配置
         """
         if config_file is None:
             config_file = Path.cwd() / "config.json"
@@ -99,26 +104,35 @@ class ConfigManager:
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
 
         # 加载配置
-        self.load()
+        if load_on_init:
+            self.load()
 
     def load(self) -> None:
-        """从文件加载配置
+        """从当前配置文件路径加载配置。"""
+        self.load_from_file(self.config_file)
+
+    def load_from_file(self, config_file: Union[str, Path]) -> None:
+        """从指定文件加载配置（显式路径 API）。
+
+        Args:
+            config_file: 配置文件路径
 
         Raises:
             ConfigurationError: 配置文件格式错误
             FileProcessingError: 文件读取错误
         """
-        if not self.config_file.exists():
-            # 如果配置文件不存在，创建默认配置
-            self.save()
+        file_path = Path(config_file)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if not file_path.exists():
+            # 与既有行为保持一致：缺失时创建默认配置文件
+            self.config_data = copy.deepcopy(self.DEFAULT_CONFIG)
+            self.save_to_file(file_path)
             return
 
         try:
-            with open(self.config_file, "r", encoding="utf-8") as f:
-                if (
-                    self.config_file.suffix.lower() == ".yaml"
-                    or self.config_file.suffix.lower() == ".yml"
-                ):
+            with open(file_path, "r", encoding="utf-8") as f:
+                if file_path.suffix.lower() in {".yaml", ".yml"}:
                     loaded_config = yaml.safe_load(f)
                 else:
                     loaded_config = json.load(f)
@@ -126,44 +140,51 @@ class ConfigManager:
             if not isinstance(loaded_config, dict):
                 raise ConfigurationError(
                     "配置文件格式错误：根对象必须是字典",
-                    config_file=str(self.config_file),
+                    config_file=str(file_path),
                 )
 
-            # 合并配置（保留默认值）
+            self.config_data = copy.deepcopy(self.DEFAULT_CONFIG)
             self._merge_config(loaded_config)
 
         except (json.JSONDecodeError, yaml.YAMLError) as e:
             raise ConfigurationError(
-                f"配置文件解析错误: {str(e)}", config_file=str(self.config_file)
+                f"配置文件解析错误: {str(e)}", config_file=str(file_path)
             )
         except ConfigurationError:
             raise
         except Exception as e:
             raise FileProcessingError(
                 f"读取配置文件失败: {str(e)}",
-                file_path=str(self.config_file),
+                file_path=str(file_path),
                 operation="read",
             )
 
     def save(self) -> None:
-        """保存配置到文件
+        """保存配置到当前配置文件路径。"""
+        self.save_to_file(self.config_file)
+
+    def save_to_file(self, config_file: Union[str, Path]) -> None:
+        """保存配置到指定文件（显式路径 API）。
+
+        Args:
+            config_file: 配置文件路径
 
         Raises:
             FileProcessingError: 文件写入错误
         """
+        file_path = Path(config_file)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
         try:
             # 添加元数据
             save_data = self.config_data.copy()
             save_data["_metadata"] = {
                 "last_updated": datetime.now().isoformat(),
-                "version": self.config_data.get("version", "1.0.0"),
+                "version": self.config_data.get("version", get_version()),
             }
 
-            with open(self.config_file, "w", encoding="utf-8") as f:
-                if (
-                    self.config_file.suffix.lower() == ".yaml"
-                    or self.config_file.suffix.lower() == ".yml"
-                ):
+            with open(file_path, "w", encoding="utf-8") as f:
+                if file_path.suffix.lower() in {".yaml", ".yml"}:
                     yaml.dump(
                         save_data,
                         f,
@@ -177,7 +198,7 @@ class ConfigManager:
         except Exception as e:
             raise FileProcessingError(
                 f"保存配置文件失败: {str(e)}",
-                file_path=str(self.config_file),
+                file_path=str(file_path),
                 operation="write",
             )
 

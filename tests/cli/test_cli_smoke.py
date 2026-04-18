@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from integrated_script.main import main as package_main
+from integrated_script.version import get_version
 
 
 def test_package_main_version_flag_exits_zero(capsys) -> None:
@@ -12,6 +13,7 @@ def test_package_main_version_flag_exits_zero(capsys) -> None:
     captured = capsys.readouterr()
     assert exc.value.code == 0
     assert "integrated_script" in captured.out
+    assert get_version() in captured.out
 
 
 def test_root_main_has_src_path_insertion_logic() -> None:

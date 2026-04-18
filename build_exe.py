@@ -50,6 +50,7 @@ def build_exe():
     add_data = [
         f"{project_root / 'config'}{data_separator}config",
         f"{project_root / 'requirements.txt'}{data_separator}.",
+        f"{project_root / 'pyproject.toml'}{data_separator}.",
     ]
 
     hidden_imports = [

@@ -13,7 +13,9 @@ Modules:
 
 """
 
-__version__ = "1.0.0"
+from .version import get_version
+
+__version__ = get_version()
 __author__ = "Integrated Script Team"
 __email__ = "team@example.com"
 __license__ = "MIT"

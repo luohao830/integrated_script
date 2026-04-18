@@ -4,6 +4,7 @@ import pytest
 
 from integrated_script.config.exceptions import ConfigurationError
 from integrated_script.config.settings import ConfigManager
+from integrated_script.version import get_version
 
 
 def test_creates_default_config_file_when_missing(tmp_path: Path) -> None:
@@ -13,7 +14,7 @@ def test_creates_default_config_file_when_missing(tmp_path: Path) -> None:
     manager = ConfigManager(config_file=config_file, auto_save=False)
 
     assert config_file.exists()
-    assert manager.get("version") == "1.0.0"
+    assert manager.get("version") == get_version()
     assert manager.get("paths.temp_dir") == "temp"
 
 
@@ -58,3 +59,25 @@ def test_get_all_does_not_mutate_internal_nested_config(tmp_path: Path) -> None:
     all_config["paths"]["temp_dir"] = "mutated-temp"
 
     assert manager.get("paths.temp_dir") == "temp"
+
+
+def test_load_from_file_updates_in_memory_config(tmp_path: Path) -> None:
+    source_file = tmp_path / "source.json"
+    source_file.write_text('{"processing": {"batch_size": 42}}', encoding="utf-8")
+
+    manager = ConfigManager(config_file=tmp_path / "config.json", auto_save=False)
+    manager.load_from_file(source_file)
+
+    assert manager.get("processing.batch_size") == 42
+    assert manager.get("processing.max_workers") == 4
+
+
+def test_save_to_file_writes_current_config_to_target(tmp_path: Path) -> None:
+    manager = ConfigManager(config_file=tmp_path / "config.json", auto_save=False)
+    manager.set("ui.theme", "dark")
+
+    target_file = tmp_path / "export.json"
+    manager.save_to_file(target_file)
+
+    exported = ConfigManager(config_file=target_file, auto_save=False)
+    assert exported.get("ui.theme") == "dark"

@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+from typing import List
 
 import pytest
 
@@ -11,12 +12,13 @@ from integrated_script.main import (
     setup_argument_parser,
     setup_logging_from_args,
 )
+from integrated_script.version import get_version
 
 
 class _Logger:
     def __init__(self):
-        self.infos: list[str] = []
-        self.errors: list[str] = []
+        self.infos: List[str] = []
+        self.errors: List[str] = []
 
     def info(self, message: str) -> None:
         self.infos.append(message)
@@ -74,6 +76,15 @@ def test_setup_argument_parser_parses_build_flag() -> None:
 
     assert args.build is True
 
+
+def test_setup_argument_parser_version_matches_unified_source(capsys) -> None:
+    parser = setup_argument_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--version"])
+
+    captured = capsys.readouterr()
+    assert get_version() in captured.out
 
 def test_setup_logging_from_args_respects_quiet(monkeypatch) -> None:
     captured = {}
@@ -317,3 +328,9 @@ def test_main_returns_one_on_unhandled_exception(monkeypatch) -> None:
 
     assert result == 1
     assert any("程序运行失败" in message for message in logger.errors)
+
+
+def test_unified_version_matches_pyproject() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
+    assert get_version() in pyproject

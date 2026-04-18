@@ -118,6 +118,14 @@ class VersionManager:
 
         content = self.main_file.read_text(encoding="utf-8")
 
+        # 新版本入口使用 get_version() 动态读取，无需回写硬编码版本
+        if re.search(
+            r"version\s*=\s*f?(['\"])%\(prog\)s\s+\{get_version\(\)\}\1",
+            content,
+        ):
+            print("ℹ️  main.py 使用 get_version() 动态读取版本，无需更新")
+            return
+
         # 更新 --version 参数的版本号（兼容单双引号）
         new_content = re.sub(
             r"version\s*=\s*(['\"])%\(prog\)s\s+[^'\"]*\1",
@@ -135,11 +143,19 @@ class VersionManager:
 
         try:
             # 检查是否在 Git 仓库中
-            subprocess.run(["git", "status"], check=True, capture_output=True)
+            subprocess.run(
+                ["git", "status"],
+                check=True,
+                capture_output=True,
+                cwd=self.project_root,
+            )
 
             # 检查标签是否已存在
             result = subprocess.run(
-                ["git", "tag", "-l", tag_name], capture_output=True, text=True
+                ["git", "tag", "-l", tag_name],
+                capture_output=True,
+                text=True,
+                cwd=self.project_root,
             )
 
             if result.stdout.strip():
@@ -148,7 +164,9 @@ class VersionManager:
 
             # 创建标签
             subprocess.run(
-                ["git", "tag", "-a", tag_name, "-m", tag_message], check=True
+                ["git", "tag", "-a", tag_name, "-m", tag_message],
+                check=True,
+                cwd=self.project_root,
             )
 
             print(f"✅ 已创建 Git 标签: {tag_name}")
@@ -165,15 +183,26 @@ class VersionManager:
         """提交版本更改"""
         try:
             # 添加更改的文件
-            subprocess.run(["git", "add", "pyproject.toml"], check=True)
+            subprocess.run(
+                ["git", "add", "pyproject.toml"],
+                check=True,
+                cwd=self.project_root,
+            )
 
             if self.main_file.exists():
-                subprocess.run(["git", "add", str(self.main_file)], check=True)
+                main_file_rel = self.main_file.relative_to(self.project_root).as_posix()
+                subprocess.run(
+                    ["git", "add", main_file_rel],
+                    check=True,
+                    cwd=self.project_root,
+                )
 
             # 提交更改
             commit_message = f"chore: bump version to {version}"
             subprocess.run(
-                ["git", "commit", "-m", commit_message, "--no-verify"], check=True
+                ["git", "commit", "-m", commit_message],
+                check=True,
+                cwd=self.project_root,
             )
 
             print(f"✅ 已提交版本更改: {commit_message}")
