@@ -238,7 +238,6 @@ class ReleaseManager:
         try:
             data = self.github_client.get_workflow_runs()
 
-            # 首先查找与当前版本完全匹配的工作流
             target_branch = f"v{version}"
             for run in data.get("workflow_runs", []):
                 if (
@@ -254,20 +253,6 @@ class ReleaseManager:
                         "name": run.get("name"),
                         "head_branch": run.get("head_branch"),
                     }
-
-            # 如果没找到精确匹配，返回最新的工作流（可能是刚触发的）
-            if data.get("workflow_runs"):
-                latest_run = data["workflow_runs"][0]
-                return {
-                    "status": latest_run.get("status"),
-                    "conclusion": latest_run.get("conclusion"),
-                    "html_url": latest_run.get("html_url"),
-                    "created_at": latest_run.get("created_at"),
-                    "updated_at": latest_run.get("updated_at"),
-                    "name": latest_run.get("name"),
-                    "head_branch": latest_run.get("head_branch"),
-                    "is_latest": True,
-                }
 
             return {"status": "not_found"}
 
@@ -287,7 +272,6 @@ class ReleaseManager:
 
         start_time = self.clock.now()
         check_interval = 15  # 每30秒检查一次
-        consecutive_old_workflow_count = 0  # 连续找到旧工作流的次数
 
         while self.clock.now() - start_time < timeout:
             # 获取工作流状态
@@ -298,7 +282,6 @@ class ReleaseManager:
                 return False
             elif status_info.get("status") == "not_found":
                 print("   🔍 等待工作流启动...")
-                consecutive_old_workflow_count = 0
             elif status_info.get("status") == "queued":
                 branch_info = (
                     f" (分支: {status_info.get('head_branch', 'unknown')})"
@@ -306,7 +289,6 @@ class ReleaseManager:
                     else ""
                 )
                 print(f"   ⏳ 工作流已排队等待执行{branch_info}")
-                consecutive_old_workflow_count = 0
             elif status_info.get("status") == "in_progress":
                 branch_info = (
                     f" (分支: {status_info.get('head_branch', 'unknown')})"
@@ -314,14 +296,6 @@ class ReleaseManager:
                     else ""
                 )
                 print(f"   🔄 工作流正在执行中{branch_info}")
-                if (
-                    status_info.get("is_latest")
-                    and status_info.get("head_branch") != f"v{version}"
-                ):
-                    print(
-                        f"   ⚠️  注意: 正在监控最新工作流，可能不是当前版本 v{version} 的工作流"
-                    )
-                consecutive_old_workflow_count = 0
             elif status_info.get("status") == "completed":
                 conclusion = status_info.get("conclusion")
                 branch_info = (
@@ -330,40 +304,25 @@ class ReleaseManager:
                     else ""
                 )
 
-                # 检查是否是目标版本的工作流
-                if status_info.get("head_branch") == f"v{version}":
-                    # 这是目标版本的工作流
-                    if conclusion == "success":
-                        print(f"   ✅ GitHub Actions 构建成功!{branch_info}")
-                        if status_info.get("html_url"):
-                            print(f"   🔗 查看详情: {status_info['html_url']}")
-                        return True
-                    elif conclusion == "failure":
-                        print(f"   ❌ GitHub Actions 构建失败!{branch_info}")
-                        if status_info.get("html_url"):
-                            print(f"   🔗 查看详情: {status_info['html_url']}")
-                        return False
-                    else:
-                        print(f"   ⚠️  工作流完成，状态: {conclusion}{branch_info}")
-                        return False
+                if conclusion == "success":
+                    print(f"   ✅ GitHub Actions 构建成功!{branch_info}")
+                    if status_info.get("html_url"):
+                        print(f"   🔗 查看详情: {status_info['html_url']}")
+                    return True
+                elif conclusion == "failure":
+                    print(f"   ❌ GitHub Actions 构建失败!{branch_info}")
+                    if status_info.get("html_url"):
+                        print(f"   🔗 查看详情: {status_info['html_url']}")
+                    return False
                 else:
-                    # 这是旧版本的工作流，继续等待
-                    consecutive_old_workflow_count += 1
-                    if consecutive_old_workflow_count == 1:
-                        print(
-                            f"   🔍 发现旧工作流 {branch_info}，继续等待目标版本 v{version} 的工作流..."
-                        )
-                    elif consecutive_old_workflow_count >= 5:
-                        print("   ⚠️  连续5次检查都是旧工作流，可能新工作流触发失败")
-                        print(
-                            "   💡 建议手动检查 GitHub Actions 页面: https://github.com/luohao091/integrated_script/actions"
-                        )
-                        return False  # 避免无限等待
+                    print(f"   ⚠️  工作流完成，状态: {conclusion}{branch_info}")
+                    return False
 
             # 等待下次检查
             elapsed = int(self.clock.now() - start_time)
             print(f"   等待中... ({elapsed}s/{timeout}s)")
             self.clock.sleep(check_interval)
+
 
         print("⏰ 等待超时，请手动检查 GitHub Actions 状态")
         return False

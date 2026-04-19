@@ -7,9 +7,9 @@ Processors Module
 """
 
 from .dataset_processor import DatasetProcessor
-from .file_processor import FileProcessor
-from .image_processor import ImageProcessor
-from .label_processor import LabelProcessor
+from .file import FileProcessor
+from .image import ImageProcessor
+from .label import LabelProcessor
 from .yolo_processor import YOLOProcessor
 
 __all__ = [

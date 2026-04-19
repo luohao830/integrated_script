@@ -166,7 +166,7 @@ def test_wait_for_github_actions_returns_false_when_timeout(
     assert result is False
 
 
-def test_wait_for_github_actions_returns_false_when_repeated_old_workflow(
+def test_wait_for_github_actions_returns_false_when_workflow_failed(
     tmp_path: Path, monkeypatch
 ) -> None:
     manager = _build_manager(tmp_path)
@@ -182,8 +182,8 @@ def test_wait_for_github_actions_returns_false_when_repeated_old_workflow(
 
     status = {
         "status": "completed",
-        "conclusion": "success",
-        "head_branch": "v2.0.2",
+        "conclusion": "failure",
+        "head_branch": "v2.0.3",
     }
     monkeypatch.setattr(manager, "get_github_workflow_status", lambda _version: status)
 
@@ -264,7 +264,33 @@ def test_get_github_workflow_status_prefers_exact_target_run(tmp_path: Path) -> 
 
     assert status["head_branch"] == "v2.0.3"
     assert status["html_url"] == "target-url"
-    assert "is_latest" not in status
+    assert github_client.call_count == 1
+
+
+def test_get_github_workflow_status_returns_not_found_when_target_absent(
+    tmp_path: Path,
+) -> None:
+    github_client = _FakeGitHubClient(
+        {
+            "workflow_runs": [
+                {
+                    "status": "completed",
+                    "conclusion": "success",
+                    "head_branch": "main",
+                    "event": "push",
+                    "html_url": "latest-url",
+                    "created_at": "now",
+                    "updated_at": "now",
+                    "name": "latest",
+                }
+            ]
+        }
+    )
+    manager = _build_manager(tmp_path, github_client=github_client)
+
+    status = manager.get_github_workflow_status("2.0.3")
+
+    assert status == {"status": "not_found"}
     assert github_client.call_count == 1
 
 
