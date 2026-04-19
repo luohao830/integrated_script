@@ -632,9 +632,41 @@ python scripts/release.py
 
 发布流程会串联：
 - Git 状态检查
-- 测试（若测试目录不存在可能跳过）
+- 测试（仅在仓库缺少 `tests/` / `test/` 目录时跳过）
 - 构建
-- 推送与 GitHub Actions 状态轮询
+- 推送与 GitHub Actions 状态轮询（仅跟踪目标标签分支 `v{version}`）
+
+### 10.3 GitHub Actions 状态流转（`scripts/release.py`）
+
+轮询规则：
+- 推送标签后先等待 15 秒；
+- 之后每 15 秒轮询一次；
+- 默认超时 600 秒；超时即发布失败（返回 `False`）。
+
+状态判定：
+
+| 状态 | 判定条件 | 发布结果 |
+|---|---|---|
+| `not_found` | 未找到 `head_branch == v{version}` 且 `event == push` 的工作流 | 继续等待，直到超时失败 |
+| `queued` | 目标工作流已排队 | 继续等待 |
+| `in_progress` | 目标工作流执行中 | 继续等待 |
+| `completed` + `success` | 目标工作流执行成功 | 发布成功（返回 `True`） |
+| `completed` + `failure` | 目标工作流执行失败 | 发布失败（返回 `False`） |
+| `completed` + 其他结论 | 例如 `cancelled` / `skipped` | 发布失败（返回 `False`） |
+| `error` | GitHub API 查询异常 | 发布失败（返回 `False`） |
+
+### 10.4 状态流转与单测对应关系（`tests/unit/test_release.py`）
+
+| 行为/状态 | 对应用例 |
+|---|---|
+| 只匹配目标 tag 工作流（优先精确目标） | `test_get_github_workflow_status_prefers_exact_target_run` |
+| 目标工作流缺失时返回 `not_found` | `test_get_github_workflow_status_returns_not_found_when_target_absent` |
+| `not_found` 持续到超时 -> 失败 | `test_wait_for_github_actions_returns_false_when_timeout` |
+| `completed + success` -> 成功 | `test_wait_for_github_actions_returns_true_on_target_workflow_success` |
+| `completed + failure` -> 失败 | `test_wait_for_github_actions_returns_false_when_workflow_failed` |
+| `error` -> 失败 | `test_wait_for_github_actions_returns_false_when_api_error` |
+| 自动推送模式下，等待失败会中止发布 | `test_release_auto_push_returns_false_when_wait_for_actions_fails` |
+| 自动推送模式下，等待成功才发布成功 | `test_release_auto_push_returns_true_when_wait_for_actions_succeeds` |
 
 ---
 
