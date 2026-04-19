@@ -491,3 +491,96 @@ def test_build_executable_uses_injected_python_executable(tmp_path: Path) -> Non
 
     assert success is True
     assert executor.calls[0]["cmd"] == ["/custom/python", "build_exe.py"]
+
+
+def test_run_tests_returns_false_when_tests_dir_missing(tmp_path: Path) -> None:
+    executor = _RecordingLocalExecutor([])
+    manager = _build_manager(tmp_path, local_executor=executor)
+
+    success = manager.run_tests()
+
+    assert success is False
+    assert executor.calls == []
+
+
+def test_run_tests_returns_false_when_pytest_unavailable(tmp_path: Path) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir(parents=True, exist_ok=True)
+
+    executor = _RecordingLocalExecutor([FileNotFoundError("pytest missing")])
+    manager = _build_manager(
+        tmp_path,
+        local_executor=executor,
+        python_executable="/custom/python",
+    )
+
+    success = manager.run_tests()
+
+    assert success is False
+    assert executor.calls[0]["cmd"] == ["/custom/python", "-m", "pytest", "-v"]
+
+
+def test_test_executable_runs_version_and_help_smoke_checks(tmp_path: Path) -> None:
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    exe_file = dist_dir / "integrated_script.exe"
+    exe_file.write_bytes(b"exe")
+
+    executor = _RecordingLocalExecutor(
+        [
+            {"returncode": 0, "stdout": "2.0.3\n", "stderr": ""},
+            {"returncode": 0, "stdout": "help\n", "stderr": ""},
+        ]
+    )
+    manager = _build_manager(tmp_path, local_executor=executor)
+
+    success = manager.test_executable()
+
+    assert success is True
+    assert [call["cmd"] for call in executor.calls] == [
+        [str(exe_file), "--version"],
+        [str(exe_file), "--help"],
+    ]
+
+def test_test_executable_returns_false_when_help_check_fails(tmp_path: Path) -> None:
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    exe_file = dist_dir / "integrated_script.exe"
+    exe_file.write_bytes(b"exe")
+
+    executor = _RecordingLocalExecutor(
+        [
+            {"returncode": 0, "stdout": "2.0.3\n", "stderr": ""},
+            {"returncode": 1, "stdout": "", "stderr": "usage failed"},
+        ]
+    )
+    manager = _build_manager(tmp_path, local_executor=executor)
+
+    success = manager.test_executable()
+
+    assert success is False
+    assert [call["cmd"] for call in executor.calls] == [
+        [str(exe_file), "--version"],
+        [str(exe_file), "--help"],
+    ]
+
+
+def test_test_executable_returns_false_when_version_check_fails(tmp_path: Path) -> None:
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    exe_file = dist_dir / "integrated_script.exe"
+    exe_file.write_bytes(b"exe")
+
+    executor = _RecordingLocalExecutor(
+        [
+            {"returncode": 1, "stdout": "", "stderr": "version failed"},
+        ]
+    )
+    manager = _build_manager(tmp_path, local_executor=executor)
+
+    success = manager.test_executable()
+
+    assert success is False
+    assert [call["cmd"] for call in executor.calls] == [
+        [str(exe_file), "--version"],
+    ]

@@ -122,8 +122,8 @@ class ReleaseManager:
         has_tests = any((self.project_root / d).exists() for d in test_dirs)
 
         if not has_tests:
-            print("⚠️  未找到测试目录，跳过测试")
-            return True
+            print("❌ 未找到测试目录，发布已阻断")
+            return False
 
         try:
             # 尝试运行 pytest
@@ -140,8 +140,8 @@ class ReleaseManager:
             print("❌ 测试失败")
             return False
         except FileNotFoundError:
-            print("⚠️  pytest 未安装，跳过测试")
-            return True
+            print("❌ pytest 或 Python 不可用，发布已阻断")
+            return False
 
     def build_executable(self) -> bool:
         """构建可执行文件"""
@@ -182,21 +182,23 @@ class ReleaseManager:
             print("❌ 找不到可执行文件")
             return False
 
-        try:
-            # 测试 --version 参数
-            result = self.local_executor.run(
-                [str(exe_path), "--version"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
+        smoke_commands = [["--version"], ["--help"]]
 
-            if result.returncode == 0:
-                print(f"✅ 可执行文件测试通过: {result.stdout.strip()}")
-                return True
-            else:
-                print(f"❌ 可执行文件测试失败: {result.stderr}")
-                return False
+        try:
+            for args in smoke_commands:
+                result = self.local_executor.run(
+                    [str(exe_path), *args],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+
+                if result.returncode != 0:
+                    print(f"❌ 可执行文件测试失败 ({' '.join(args)}): {result.stderr}")
+                    return False
+
+            print("✅ 可执行文件测试通过: --version 与 --help")
+            return True
 
         except subprocess.TimeoutExpired:
             print("❌ 可执行文件测试超时")

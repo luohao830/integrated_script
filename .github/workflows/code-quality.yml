@@ -3,9 +3,9 @@ name: Code Quality Check
 # 触发条件
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, master, develop ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, master, develop ]
   workflow_dispatch:  # 允许手动触发
 
 jobs:
@@ -55,6 +55,10 @@ jobs:
         mypy src/integrated_script/
       continue-on-error: true  # MyPy 错误不会导致构建失败
 
+    - name: Run tests (required gate)
+      run: |
+        pytest -m "not slow" -v
+
     - name: Run comprehensive code quality check
       run: |
         python scripts/format_code.py --check-only
@@ -63,7 +67,7 @@ jobs:
   # 自动格式化分支（仅在推送到 main 分支时运行）
   auto-format:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push'
     needs: code-quality
 
     steps:
