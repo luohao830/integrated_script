@@ -722,45 +722,58 @@ def test_processor_facade_merge_dataset_parallel_delegates_to_internal_helper(
 
 
 @pytest.mark.unit
-def test_list_xlabel_json_files_prefers_root_json_files(tmp_path: Path) -> None:
+def test_detect_xlabel_segmentation_classes_delegates_to_recursive_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     processor = _build_processor(tmp_path)
-
     source_dir = tmp_path / "xlabel"
     source_dir.mkdir()
 
-    root_json = source_dir / "root.json"
-    root_json.write_text("{}", encoding="utf-8")
+    captured: Dict[str, Any] = {}
 
-    nested_dir = source_dir / "nested"
-    nested_dir.mkdir()
-    (nested_dir / "nested.json").write_text("{}", encoding="utf-8")
+    def fake_scan(source_path: Path, warn_json_read_failed=None):
+        captured["source_path"] = source_path
+        captured["warn_json_read_failed"] = warn_json_read_failed
+        return {
+            "json_files": [],
+            "classes": {"cat", "dog"},
+            "total_shapes": 0,
+            "detection_like": 0,
+            "segmentation_like": 0,
+        }
 
-    result = processor._list_xlabel_json_files(source_dir)
+    monkeypatch.setattr(yolo_processor, "scan_xlabel_dataset_recursive", fake_scan)
 
-    assert {path.name for path in result} == {"root.json"}
+    result = processor.detect_xlabel_segmentation_classes(str(source_dir))
+
+    assert result == {"cat", "dog"}
+    assert captured["source_path"] == source_dir
+    assert callable(captured["warn_json_read_failed"])
 
 
 @pytest.mark.unit
-def test_list_xlabel_json_files_scans_first_level_subdirs_and_skips_dataset_dirs(
+def test_convert_xlabel_to_yolo_segmentation_uses_scan_result_classes(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     processor = _build_processor(tmp_path)
-
     source_dir = tmp_path / "xlabel"
     source_dir.mkdir()
 
-    subdir = source_dir / "subdir"
-    subdir.mkdir()
-    (subdir / "a.json").write_text("{}", encoding="utf-8")
+    def fake_scan(_source_path: Path, **_kwargs):
+        return {
+            "json_files": [],
+            "classes": {"cat", "dog"},
+            "total_shapes": 0,
+            "detection_like": 0,
+            "segmentation_like": 0,
+        }
 
-    dataset_dir = source_dir / "ignored_dataset"
-    dataset_dir.mkdir()
-    (dataset_dir / "b.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(yolo_processor, "scan_xlabel_dataset_recursive", fake_scan)
 
-    deep_dir = subdir / "deep"
-    deep_dir.mkdir()
-    (deep_dir / "deep.json").write_text("{}", encoding="utf-8")
+    result = processor.convert_xlabel_to_yolo_segmentation(str(source_dir))
 
-    result = processor._list_xlabel_json_files(source_dir)
-
-    assert {str(path.relative_to(source_dir)) for path in result} == {"subdir/a.json"}
+    assert result["success"] is True
+    assert result["statistics"]["json_files"] == 0
+    assert result["classes"] == ["cat", "dog"]

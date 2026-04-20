@@ -235,47 +235,16 @@ class YOLOProcessor(DatasetProcessor):
             },
         }
 
-    def _list_xlabel_json_files(self, base_dir: Path) -> List[Path]:
-        """按既有规则收集 X-label JSON 文件。
-
-        规则保持兼容：
-        - 若根目录下存在 JSON，仅返回根目录 JSON；
-        - 否则仅扫描一级子目录（跳过 *_dataset 目录）中的 JSON。
-        """
-        root_json_files = [
-            path for path in base_dir.iterdir() if path.is_file() and path.suffix.lower() == ".json"
-        ]
-        if root_json_files:
-            return root_json_files
-
-        nested_json_files: List[Path] = []
-        for subdir in base_dir.iterdir():
-            if not subdir.is_dir() or subdir.name.endswith("_dataset"):
-                continue
-            nested_json_files.extend(
-                path
-                for path in subdir.iterdir()
-                if path.is_file() and path.suffix.lower() == ".json"
-            )
-        return nested_json_files
-
     def detect_xlabel_segmentation_classes(self, source_dir: str) -> Set[str]:
-        """扫描X-label分割JSON中的类别名称（按脚本规则）"""
+        """扫描X-label分割JSON中的类别名称"""
         source_path = validate_path(source_dir, must_exist=True, must_be_dir=True)
-        classes: Set[str] = set()
-
-        for json_path in self._list_xlabel_json_files(source_path):
-            try:
-                with json_path.open("r", encoding="utf-8") as f:
-                    data = json.load(f)
-                for shape in data.get("shapes", []):
-                    label = shape.get("label")
-                    if label:
-                        classes.add(label)
-            except Exception as e:
-                self.logger.warning(f"读取JSON失败 {json_path}: {e}")
-
-        return classes
+        scan_result = scan_xlabel_dataset_recursive(
+            source_path,
+            warn_json_read_failed=lambda json_path, error: self.logger.warning(
+                f"读取JSON失败 {json_path}: {error}"
+            ),
+        )
+        return scan_result["classes"]
 
     def convert_xlabel_to_yolo(
         self,
@@ -450,19 +419,15 @@ class YOLOProcessor(DatasetProcessor):
         create_directory(images_dir)
         create_directory(labels_dir)
 
-        json_files = self._list_xlabel_json_files(source_path)
-        detected_classes: Set[str] = set()
-        for json_path in json_files:
-            try:
-                with json_path.open("r", encoding="utf-8") as f:
-                    data = json.load(f)
-                for shape in data.get("shapes", []):
-                    label = shape.get("label")
-                    if label:
-                        detected_classes.add(label)
-            except Exception as e:
-                self.logger.warning(f"读取JSON失败 {json_path}: {e}")
+        scan_result = scan_xlabel_dataset_recursive(
+            source_path,
+            warn_json_read_failed=lambda json_path, error: self.logger.warning(
+                f"读取JSON失败 {json_path}: {error}"
+            ),
+        )
 
+        json_files: List[Path] = scan_result["json_files"]
+        detected_classes: Set[str] = scan_result["classes"]
         if not detected_classes:
             raise DatasetError("未检测到任何类别", dataset_path=str(source_path))
 
