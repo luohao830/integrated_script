@@ -8,6 +8,7 @@ release.py
 简化发布流程，包括版本管理、构建、测试和发布
 """
 
+import os
 import subprocess
 import sys
 import time
@@ -17,6 +18,24 @@ from typing import Any, Dict, Optional
 import requests
 
 from version_manager import VersionManager
+
+
+GITHUB_ACTIONS_API_URL_ENV = "INTEGRATED_SCRIPT_GITHUB_ACTIONS_API_URL"
+
+
+def resolve_github_actions_api_url(explicit_api_url: Optional[str] = None) -> str:
+    """解析 GitHub Actions API 地址（显式参数 > 环境变量 > 默认值）"""
+    default_api_url = (
+        "https://api.github.com/repos/luohao091/integrated_script/actions/runs"
+    )
+    if explicit_api_url:
+        return explicit_api_url
+
+    env_api_url = os.environ.get(GITHUB_ACTIONS_API_URL_ENV)
+    if env_api_url:
+        return env_api_url
+
+    return default_api_url
 
 
 class SubprocessExecutor:
@@ -45,10 +64,7 @@ class GitHubActionsClient:
     """GitHub Actions API 客户端"""
 
     def __init__(self, api_url: Optional[str] = None):
-        self.api_url = (
-            api_url
-            or "https://api.github.com/repos/luohao091/integrated_script/actions/runs"
-        )
+        self.api_url = resolve_github_actions_api_url(api_url)
 
     def get_workflow_runs(self) -> Dict[str, Any]:
         response = requests.get(self.api_url, timeout=10)
@@ -78,11 +94,14 @@ class ReleaseManager:
         github_client: Optional[GitHubActionsClient] = None,
         clock: Optional[SystemClock] = None,
         python_executable: Optional[str] = None,
+        github_actions_api_url: Optional[str] = None,
     ):
         self.project_root = project_root or Path(__file__).parent.parent
         self.vm = VersionManager(self.project_root)
         self.local_executor = local_executor or SubprocessExecutor()
-        self.github_client = github_client or GitHubActionsClient()
+        self.github_client = github_client or GitHubActionsClient(
+            api_url=github_actions_api_url
+        )
         self.clock = clock or SystemClock()
         self.python_executable = python_executable or sys.executable
 
@@ -541,11 +560,19 @@ def main():
 
     parser.add_argument("--auto-push", action="store_true", help="自动推送到 GitHub")
 
+    parser.add_argument(
+        "--github-actions-api-url",
+        help=(
+            "GitHub Actions API 地址（优先级：命令行参数 > 环境变量 "
+            f"{GITHUB_ACTIONS_API_URL_ENV} > 默认仓库地址）"
+        ),
+    )
+
     parser.add_argument("-m", "--message", help="发布消息")
 
     args = parser.parse_args()
 
-    rm = ReleaseManager()
+    rm = ReleaseManager(github_actions_api_url=args.github_actions_api_url)
 
     try:
         success = rm.release(

@@ -584,3 +584,95 @@ def test_test_executable_returns_false_when_version_check_fails(tmp_path: Path) 
     assert [call["cmd"] for call in executor.calls] == [
         [str(exe_file), "--version"],
     ]
+
+
+def test_github_actions_client_uses_default_api_url_when_no_override(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("INTEGRATED_SCRIPT_GITHUB_ACTIONS_API_URL", raising=False)
+
+    client = release_module.GitHubActionsClient()
+
+    assert (
+        client.api_url
+        == "https://api.github.com/repos/luohao091/integrated_script/actions/runs"
+    )
+
+
+def test_github_actions_client_uses_env_api_url_when_set(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "INTEGRATED_SCRIPT_GITHUB_ACTIONS_API_URL",
+        "https://api.github.com/repos/acme/demo/actions/runs",
+    )
+
+    client = release_module.GitHubActionsClient()
+
+    assert client.api_url == "https://api.github.com/repos/acme/demo/actions/runs"
+
+
+def test_github_actions_client_prefers_explicit_api_url_over_env(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "INTEGRATED_SCRIPT_GITHUB_ACTIONS_API_URL",
+        "https://api.github.com/repos/acme/demo/actions/runs",
+    )
+
+    client = release_module.GitHubActionsClient(
+        api_url="https://api.github.com/repos/owner/explicit/actions/runs"
+    )
+
+    assert client.api_url == "https://api.github.com/repos/owner/explicit/actions/runs"
+
+
+def test_main_passes_cli_github_api_url_to_release_manager(monkeypatch) -> None:
+    observed: dict = {}
+
+    class _FakeReleaseManager:
+        def __init__(self, **kwargs):
+            observed["init_kwargs"] = kwargs
+
+        def release(
+            self,
+            version_type: str,
+            skip_tests: bool,
+            skip_build: bool,
+            auto_push: bool,
+            message,
+        ) -> bool:
+            observed["release_kwargs"] = {
+                "version_type": version_type,
+                "skip_tests": skip_tests,
+                "skip_build": skip_build,
+                "auto_push": auto_push,
+                "message": message,
+            }
+            return True
+
+    monkeypatch.setattr(release_module, "ReleaseManager", _FakeReleaseManager)
+    monkeypatch.setattr(
+        release_module.sys,
+        "argv",
+        [
+            "release.py",
+            "minor",
+            "--skip-tests",
+            "--skip-build",
+            "--auto-push",
+            "--github-actions-api-url",
+            "https://api.github.com/repos/acme/demo/actions/runs",
+            "-m",
+            "p2",
+        ],
+    )
+
+    release_module.main()
+
+    assert observed["init_kwargs"]["github_actions_api_url"] == (
+        "https://api.github.com/repos/acme/demo/actions/runs"
+    )
+    assert observed["release_kwargs"] == {
+        "version_type": "minor",
+        "skip_tests": True,
+        "skip_build": True,
+        "auto_push": True,
+        "message": "p2",
+    }

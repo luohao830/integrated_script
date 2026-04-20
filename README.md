@@ -632,9 +632,14 @@ python scripts/release.py
 
 发布流程会串联：
 - Git 状态检查
-- 测试（仅在仓库缺少 `tests/` / `test/` 目录时跳过）
+- 测试（缺少 `tests/` / `test/` 目录或 `pytest` 不可用时会阻断发布）
 - 构建
 - 推送与 GitHub Actions 状态轮询（仅跟踪目标标签分支 `v{version}`）
+
+GitHub Actions API 目标支持参数化：
+- 命令行参数：`--github-actions-api-url`
+- 环境变量：`INTEGRATED_SCRIPT_GITHUB_ACTIONS_API_URL`
+- 优先级：命令行参数 > 环境变量 > 默认仓库地址
 
 ### 10.3 GitHub Actions 状态流转（`scripts/release.py`）
 
