@@ -12,9 +12,11 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, List, Optional, Union
 
-from ..config.exceptions import PathError, ProcessingError
+from ..config.exceptions import ProcessingError
 from ..config.settings import ConfigManager
 from .logging_config import get_logger
+from .utils import get_file_list as get_file_list_util
+from .utils import validate_path as validate_path_util
 
 
 class BaseProcessor(ABC):
@@ -191,18 +193,13 @@ class BaseProcessor(ABC):
         Raises:
             PathError: 路径验证失败
         """
-        path_obj = Path(path)
-
-        if must_exist and not path_obj.exists():
-            raise PathError(f"路径不存在: {path}", path=str(path))
-
-        if must_be_dir and path_obj.exists() and not path_obj.is_dir():
-            raise PathError(f"路径不是目录: {path}", path=str(path))
-
-        if must_be_file and path_obj.exists() and not path_obj.is_file():
-            raise PathError(f"路径不是文件: {path}", path=str(path))
-
-        return path_obj
+        validate_path_util(
+            path=path,
+            must_exist=must_exist,
+            must_be_dir=must_be_dir,
+            must_be_file=must_be_file,
+        )
+        return Path(path)
 
     def get_file_list(
         self,
@@ -220,22 +217,12 @@ class BaseProcessor(ABC):
         Returns:
             List[Path]: 文件路径列表
         """
-        dir_path = self.validate_path(directory, must_exist=True, must_be_dir=True)
-
-        if recursive:
-            pattern = "**/*"
-        else:
-            pattern = "*"
-
-        files = []
-        for file_path in dir_path.glob(pattern):
-            if file_path.is_file():
-                if extensions is None or file_path.suffix.lower() in [
-                    ext.lower() for ext in extensions
-                ]:
-                    files.append(file_path)
-
-        return sorted(files)
+        return get_file_list_util(
+            directory=directory,
+            extensions=extensions,
+            recursive=recursive,
+            include_hidden=True,
+        )
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}(name={self.name}, initialized={self._initialized})"

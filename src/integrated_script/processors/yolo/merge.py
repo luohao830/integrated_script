@@ -41,14 +41,32 @@ def merge_datasets_internal(
 
         common_classes = classes_validation["classes"]
 
+        pre_scanned_images: Optional[List[List[Path]]] = None
         if not output_name:
-            output_name = processor._generate_output_name(common_classes, validated_paths)
+            pre_scanned_images = [
+                get_file_list(dataset_path, processor.image_extensions, recursive=True)
+                for dataset_path in validated_paths
+            ]
+            processor._merge_image_manifest = pre_scanned_images
+            try:
+                output_name = processor._generate_output_name(
+                    common_classes,
+                    validated_paths,
+                    image_manifest=pre_scanned_images,
+                )
+            finally:
+                if hasattr(processor, "_merge_image_manifest"):
+                    delattr(processor, "_merge_image_manifest")
 
         output_dir = Path(output_path) / output_name
         create_directory(output_dir)
 
         merge_result = processor._merge_dataset_files(
-            validated_paths, output_dir, image_prefix, common_classes
+            validated_paths,
+            output_dir,
+            image_prefix,
+            common_classes,
+            pre_scanned_images=pre_scanned_images,
         )
 
         processor.logger.info(f"数据集合并完成: {output_dir}")
@@ -99,9 +117,16 @@ def merge_different_type_datasets_internal(
             all_classes_info
         )
 
+        pre_scanned_images: Optional[List[List[Path]]] = None
         if not output_name:
+            pre_scanned_images = [
+                get_file_list(dataset_path, processor.image_extensions, recursive=True)
+                for dataset_path in validated_paths
+            ]
             output_name = processor._generate_different_output_name(
-                unified_classes, validated_paths
+                unified_classes,
+                validated_paths,
+                image_manifest=pre_scanned_images,
             )
 
         output_dir = Path(output_path) / output_name
@@ -113,6 +138,7 @@ def merge_different_type_datasets_internal(
             image_prefix,
             unified_classes,
             class_mappings,
+            pre_scanned_images=pre_scanned_images,
         )
 
         processor.logger.info(f"不同类型数据集合并完成: {output_dir}")
@@ -265,6 +291,12 @@ def merge_dataset_parallel_internal(
         return len(batch_tasks)
 
     tasks = [(img_file, start_index + i) for i, img_file in enumerate(image_files)]
+    if not tasks:
+        return {
+            "images_processed": 0,
+            "labels_processed": 0,
+            "failed_count": 0,
+        }
 
     batch_size = max(1, len(tasks) // (os.cpu_count() or 4))
     batch_size = min(batch_size, 100)
@@ -305,13 +337,19 @@ def merge_dataset_parallel_internal(
 
 
 def generate_output_name_internal(
-    _processor: "YOLOProcessor", classes: List[str], dataset_paths: List[Path]
+    _processor: "YOLOProcessor",
+    classes: List[str],
+    dataset_paths: List[Path],
+    image_manifest: Optional[List[List[Path]]] = None,
 ) -> str:
     """为一致类别数据集生成输出目录名称。"""
-    total_images = 0
-    for dataset_path in dataset_paths:
-        image_files = get_file_list(dataset_path, _processor.image_extensions, recursive=True)
-        total_images += len(image_files)
+    if image_manifest is None:
+        image_manifest = [
+            get_file_list(dataset_path, _processor.image_extensions, recursive=True)
+            for dataset_path in dataset_paths
+        ]
+
+    total_images = sum(len(image_files) for image_files in image_manifest)
 
     classes_prefix = "_".join(classes[:3])
     if len(classes) > 3:
@@ -323,13 +361,19 @@ def generate_output_name_internal(
 
 
 def generate_different_output_name_internal(
-    processor: "YOLOProcessor", unified_classes: List[str], dataset_paths: List[Path]
+    processor: "YOLOProcessor",
+    unified_classes: List[str],
+    dataset_paths: List[Path],
+    image_manifest: Optional[List[List[Path]]] = None,
 ) -> str:
     """为不同类别数据集合并生成输出目录名称。"""
-    total_images = 0
-    for dataset_path in dataset_paths:
-        image_files = get_file_list(dataset_path, processor.image_extensions, recursive=True)
-        total_images += len(image_files)
+    if image_manifest is None:
+        image_manifest = [
+            get_file_list(dataset_path, processor.image_extensions, recursive=True)
+            for dataset_path in dataset_paths
+        ]
+
+    total_images = sum(len(image_files) for image_files in image_manifest)
 
     classes_prefix = "_".join(unified_classes[:3])
     if len(unified_classes) > 3:

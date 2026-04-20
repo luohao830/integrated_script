@@ -486,10 +486,12 @@ def test_processor_facade_generate_output_name_delegates_to_internal_helper(
         self: YOLOProcessor,
         classes: List[str],
         dataset_paths: List[Path],
+        image_manifest: Optional[List[List[Path]]] = None,
     ) -> str:
         captured["self"] = self
         captured["classes"] = classes
         captured["dataset_paths"] = dataset_paths
+        captured["image_manifest"] = image_manifest
         return "merged_name"
 
     monkeypatch.setattr(
@@ -506,6 +508,51 @@ def test_processor_facade_generate_output_name_delegates_to_internal_helper(
         "self": processor,
         "classes": ["car"],
         "dataset_paths": paths,
+        "image_manifest": None,
+    }
+
+
+@pytest.mark.unit
+def test_processor_facade_generate_output_name_accepts_image_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _build_processor(tmp_path)
+
+    captured: Dict[str, Any] = {}
+
+    def fake_generate_output_name_internal(
+        self: YOLOProcessor,
+        classes: List[str],
+        dataset_paths: List[Path],
+        image_manifest: Optional[List[List[Path]]] = None,
+    ) -> str:
+        captured["self"] = self
+        captured["classes"] = classes
+        captured["dataset_paths"] = dataset_paths
+        captured["image_manifest"] = image_manifest
+        return "merged_name"
+
+    monkeypatch.setattr(
+        yolo_processor,
+        "generate_output_name_internal",
+        fake_generate_output_name_internal,
+    )
+
+    paths = [Path("/tmp/d1"), Path("/tmp/d2")]
+    image_manifest = [[Path("/tmp/d1/a.jpg")], [Path("/tmp/d2/b.jpg")]]
+    result = processor._generate_output_name(
+        ["car"],
+        paths,
+        image_manifest=image_manifest,
+    )
+
+    assert result == "merged_name"
+    assert captured == {
+        "self": processor,
+        "classes": ["car"],
+        "dataset_paths": paths,
+        "image_manifest": image_manifest,
     }
 
 
@@ -584,10 +631,12 @@ def test_processor_facade_generate_different_output_name_delegates_to_internal_h
         self: YOLOProcessor,
         unified_classes: List[str],
         dataset_paths: List[Path],
+        image_manifest: Optional[List[List[Path]]] = None,
     ) -> str:
         captured["self"] = self
         captured["unified_classes"] = unified_classes
         captured["dataset_paths"] = dataset_paths
+        captured["image_manifest"] = image_manifest
         return "mixed_name"
 
     monkeypatch.setattr(
@@ -604,6 +653,7 @@ def test_processor_facade_generate_different_output_name_delegates_to_internal_h
         "self": processor,
         "unified_classes": ["car"],
         "dataset_paths": paths,
+        "image_manifest": None,
     }
 
 
@@ -669,3 +719,48 @@ def test_processor_facade_merge_dataset_parallel_delegates_to_internal_helper(
         "label_mapping": label_mapping,
         "dataset_num": 1,
     }
+
+
+@pytest.mark.unit
+def test_list_xlabel_json_files_prefers_root_json_files(tmp_path: Path) -> None:
+    processor = _build_processor(tmp_path)
+
+    source_dir = tmp_path / "xlabel"
+    source_dir.mkdir()
+
+    root_json = source_dir / "root.json"
+    root_json.write_text("{}", encoding="utf-8")
+
+    nested_dir = source_dir / "nested"
+    nested_dir.mkdir()
+    (nested_dir / "nested.json").write_text("{}", encoding="utf-8")
+
+    result = processor._list_xlabel_json_files(source_dir)
+
+    assert {path.name for path in result} == {"root.json"}
+
+
+@pytest.mark.unit
+def test_list_xlabel_json_files_scans_first_level_subdirs_and_skips_dataset_dirs(
+    tmp_path: Path,
+) -> None:
+    processor = _build_processor(tmp_path)
+
+    source_dir = tmp_path / "xlabel"
+    source_dir.mkdir()
+
+    subdir = source_dir / "subdir"
+    subdir.mkdir()
+    (subdir / "a.json").write_text("{}", encoding="utf-8")
+
+    dataset_dir = source_dir / "ignored_dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "b.json").write_text("{}", encoding="utf-8")
+
+    deep_dir = subdir / "deep"
+    deep_dir.mkdir()
+    (deep_dir / "deep.json").write_text("{}", encoding="utf-8")
+
+    result = processor._list_xlabel_json_files(source_dir)
+
+    assert {str(path.relative_to(source_dir)) for path in result} == {"subdir/a.json"}

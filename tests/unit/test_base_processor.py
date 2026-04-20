@@ -137,12 +137,22 @@ def test_validate_path_checks_dir_and_file_requirements(
     with pytest.raises(PathError):
         processor.validate_path(tmp_path, must_be_file=True)
 
-
 def test_validate_path_raises_when_missing(tmp_path: Path) -> None:
     processor = DummyProcessor(config=_build_config(tmp_path))
 
     with pytest.raises(PathError):
         processor.validate_path(tmp_path / "not-exists", must_exist=True)
+
+
+def test_validate_path_returns_input_path_object_without_resolving(
+    tmp_path: Path,
+) -> None:
+    processor = DummyProcessor(config=_build_config(tmp_path))
+
+    relative_path = Path("tmp") / "demo"
+    validated = processor.validate_path(relative_path, must_exist=False)
+
+    assert validated == relative_path
 
 
 def test_get_file_list_filters_extensions_and_recursive_flag(
@@ -152,12 +162,14 @@ def test_get_file_list_filters_extensions_and_recursive_flag(
 
     root_txt = tmp_path / "root.txt"
     root_jpg = tmp_path / "root.jpg"
+    hidden_txt = tmp_path / ".hidden.txt"
     nested_dir = tmp_path / "nested"
     nested_dir.mkdir()
     nested_txt = nested_dir / "nested.txt"
 
     root_txt.write_text("x", encoding="utf-8")
     root_jpg.write_text("x", encoding="utf-8")
+    hidden_txt.write_text("x", encoding="utf-8")
     nested_txt.write_text("x", encoding="utf-8")
 
     non_recursive = processor.get_file_list(
@@ -171,8 +183,9 @@ def test_get_file_list_filters_extensions_and_recursive_flag(
         recursive=True,
     )
 
-    assert [path.name for path in non_recursive] == ["root.txt"]
+    assert sorted(path.name for path in non_recursive) == [".hidden.txt", "root.txt"]
     assert sorted(path.name for path in recursive) == [
+        ".hidden.txt",
         "nested.txt",
         "root.txt",
     ]

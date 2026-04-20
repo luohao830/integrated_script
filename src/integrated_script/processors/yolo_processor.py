@@ -9,7 +9,6 @@ YOLO数据集处理器
 """
 
 import json
-import os
 import random
 import time
 from pathlib import Path
@@ -43,6 +42,7 @@ from .yolo import (
     create_unified_class_mapping_internal,
     generate_different_output_name_internal,
     generate_output_name_internal,
+    scan_xlabel_dataset_recursive,
 )
 
 
@@ -115,80 +115,28 @@ class YOLOProcessor(DatasetProcessor):
     def detect_xlabel_classes(self, source_dir: str) -> Set[str]:
         """扫描X-label/Labelme JSON中的类别名称"""
         source_path = validate_path(source_dir, must_exist=True, must_be_dir=True)
-        classes: Set[str] = set()
-
-        for root, dirs, files in os.walk(source_path):
-            root_path = Path(root)
-            if root_path.name.endswith("_dataset"):
-                dirs[:] = []
-                continue
-
-            for filename in files:
-                if not filename.lower().endswith(".json"):
-                    continue
-                json_path = root_path / filename
-                try:
-                    with json_path.open("r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    for shape in data.get("shapes", []):
-                        label = shape.get("label")
-                        if label:
-                            classes.add(label)
-                except Exception as e:
-                    self.logger.warning(f"读取JSON失败 {json_path}: {e}")
-
-        return classes
+        scan_result = scan_xlabel_dataset_recursive(
+            source_path,
+            warn_json_read_failed=lambda json_path, error: self.logger.warning(
+                f"读取JSON失败 {json_path}: {error}"
+            ),
+        )
+        return scan_result["classes"]
 
     def detect_xlabel_dataset_type(self, source_dir: str) -> Dict[str, Any]:
         """检测X-label数据集类型（检测/分割/混合）"""
         source_path = validate_path(source_dir, must_exist=True, must_be_dir=True)
 
-        total_shapes = 0
-        detection_like = 0
-        segmentation_like = 0
+        scan_result = scan_xlabel_dataset_recursive(
+            source_path,
+            warn_json_read_failed=lambda json_path, error: self.logger.warning(
+                f"读取JSON失败 {json_path}: {error}"
+            ),
+        )
 
-        for root, dirs, files in os.walk(source_path):
-            root_path = Path(root)
-            if root_path.name.endswith("_dataset"):
-                dirs[:] = []
-                continue
-
-            for filename in files:
-                if not filename.lower().endswith(".json"):
-                    continue
-                json_path = root_path / filename
-                try:
-                    with json_path.open("r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    for shape in data.get("shapes", []):
-                        points = shape.get("points", [])
-                        shape_type = (shape.get("shape_type") or "").lower()
-                        if not points:
-                            continue
-
-                        total_shapes += 1
-
-                        if shape_type in {"rectangle", "rect", "box"}:
-                            detection_like += 1
-                            continue
-
-                        if shape_type in {"polygon", "polyline", "linestrip"}:
-                            segmentation_like += 1
-                            continue
-
-                        if len(points) >= 3:
-                            # 兜底：识别可能的矩形（4点且仅2个不同x/y）
-                            if len(points) == 4:
-                                xs = {p[0] for p in points}
-                                ys = {p[1] for p in points}
-                                if len(xs) == 2 and len(ys) == 2:
-                                    detection_like += 1
-                                    continue
-                            segmentation_like += 1
-                        else:
-                            detection_like += 1
-                except Exception as e:
-                    self.logger.warning(f"读取JSON失败 {json_path}: {e}")
+        total_shapes = scan_result["total_shapes"]
+        detection_like = scan_result["detection_like"]
+        segmentation_like = scan_result["segmentation_like"]
 
         if total_shapes == 0:
             detected_type = "unknown"
@@ -287,34 +235,36 @@ class YOLOProcessor(DatasetProcessor):
             },
         }
 
+    def _list_xlabel_json_files(self, base_dir: Path) -> List[Path]:
+        """按既有规则收集 X-label JSON 文件。
+
+        规则保持兼容：
+        - 若根目录下存在 JSON，仅返回根目录 JSON；
+        - 否则仅扫描一级子目录（跳过 *_dataset 目录）中的 JSON。
+        """
+        root_json_files = [
+            path for path in base_dir.iterdir() if path.is_file() and path.suffix.lower() == ".json"
+        ]
+        if root_json_files:
+            return root_json_files
+
+        nested_json_files: List[Path] = []
+        for subdir in base_dir.iterdir():
+            if not subdir.is_dir() or subdir.name.endswith("_dataset"):
+                continue
+            nested_json_files.extend(
+                path
+                for path in subdir.iterdir()
+                if path.is_file() and path.suffix.lower() == ".json"
+            )
+        return nested_json_files
+
     def detect_xlabel_segmentation_classes(self, source_dir: str) -> Set[str]:
         """扫描X-label分割JSON中的类别名称（按脚本规则）"""
         source_path = validate_path(source_dir, must_exist=True, must_be_dir=True)
         classes: Set[str] = set()
 
-        def list_json_files(base_dir: Path) -> List[Path]:
-            jsons = [
-                p
-                for p in base_dir.iterdir()
-                if p.is_file() and p.suffix.lower() == ".json"
-            ]
-            if jsons:
-                return jsons
-
-            files: List[Path] = []
-            for subdir in base_dir.iterdir():
-                if not subdir.is_dir():
-                    continue
-                if subdir.name.endswith("_dataset"):
-                    continue
-                files.extend(
-                    p
-                    for p in subdir.iterdir()
-                    if p.is_file() and p.suffix.lower() == ".json"
-                )
-            return files
-
-        for json_path in list_json_files(source_path):
+        for json_path in self._list_xlabel_json_files(source_path):
             try:
                 with json_path.open("r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -348,7 +298,14 @@ class YOLOProcessor(DatasetProcessor):
         create_directory(images_dir)
         create_directory(labels_dir)
 
-        detected_classes = self.detect_xlabel_classes(str(source_path))
+        scan_result = scan_xlabel_dataset_recursive(
+            source_path,
+            warn_json_read_failed=lambda json_path, error: self.logger.warning(
+                f"读取JSON失败 {json_path}: {error}"
+            ),
+        )
+
+        detected_classes: Set[str] = scan_result["classes"]
         if not detected_classes:
             raise DatasetError("未检测到任何类别", dataset_path=str(source_path))
 
@@ -367,15 +324,7 @@ class YOLOProcessor(DatasetProcessor):
             final_classes = sorted(detected_classes)
         class_mapping = {name: idx for idx, name in enumerate(final_classes)}
 
-        json_files: List[Path] = []
-        for root, dirs, files in os.walk(source_path):
-            root_path = Path(root)
-            if root_path.name.endswith("_dataset"):
-                dirs[:] = []
-                continue
-            for filename in files:
-                if filename.lower().endswith(".json"):
-                    json_files.append(root_path / filename)
+        json_files: List[Path] = scan_result["json_files"]
 
         result: Dict[str, Any] = {
             "success": True,
@@ -501,29 +450,7 @@ class YOLOProcessor(DatasetProcessor):
         create_directory(images_dir)
         create_directory(labels_dir)
 
-        def list_json_files(base_dir: Path) -> List[Path]:
-            jsons = [
-                p
-                for p in base_dir.iterdir()
-                if p.is_file() and p.suffix.lower() == ".json"
-            ]
-            if jsons:
-                return jsons
-
-            files: List[Path] = []
-            for subdir in base_dir.iterdir():
-                if not subdir.is_dir():
-                    continue
-                if subdir.name.endswith("_dataset"):
-                    continue
-                files.extend(
-                    p
-                    for p in subdir.iterdir()
-                    if p.is_file() and p.suffix.lower() == ".json"
-                )
-            return files
-
-        json_files = list_json_files(source_path)
+        json_files = self._list_xlabel_json_files(source_path)
         detected_classes: Set[str] = set()
         for json_path in json_files:
             try:
@@ -876,140 +803,113 @@ class YOLOProcessor(DatasetProcessor):
         """获取项目名称。"""
         return get_project_name(self, obj_names_path, manual_name)
 
+    def _validate_ctds_label_file(
+        self,
+        label_file: Path,
+        dataset_type: str = "detection",
+    ) -> str:
+        """单次读取并校验 CTDS 标签文件。
+
+        Returns:
+            str: "empty" | "valid" | "invalid"
+        """
+        try:
+            with open(label_file, "r", encoding="utf-8") as file:
+                lines = file.readlines()
+        except Exception as error:  # noqa: BLE001
+            self.logger.error(f"检查标签文件失败 {label_file}: {str(error)}")
+            return "invalid"
+
+        has_non_empty_line = False
+
+        for line in lines:
+            stripped_line = line.strip()
+            if not stripped_line:
+                continue
+
+            has_non_empty_line = True
+            data = stripped_line.split()
+
+            if dataset_type == "segmentation":
+                if len(data) < 7:
+                    self.logger.debug(
+                        f"文件 {label_file} 分割数据格式错误，需要至少7列: {stripped_line}"
+                    )
+                    return "invalid"
+                if len(data) % 2 == 0:
+                    self.logger.debug(
+                        f"文件 {label_file} 分割数据列数应为奇数: {stripped_line}"
+                    )
+                    return "invalid"
+                coord_values = data[1:]
+            else:
+                if len(data) < 5:
+                    self.logger.debug(
+                        f"文件 {label_file} 检测数据格式错误，需要至少5列: {stripped_line}"
+                    )
+                    return "invalid"
+                if len(data) != 5:
+                    self.logger.debug(
+                        f"文件 {label_file} 检测数据列数应为5: {stripped_line}"
+                    )
+                    return "invalid"
+                coord_values = data[1:5]
+
+            try:
+                class_id = int(data[0])
+            except ValueError:
+                self.logger.debug(f"文件 {label_file} 中类别ID格式错误: {stripped_line}")
+                return "invalid"
+            if class_id < 0:
+                self.logger.debug(
+                    f"文件 {label_file} 中类别ID不能为负数: {stripped_line}"
+                )
+                return "invalid"
+
+            for index, coord_str in enumerate(coord_values):
+                try:
+                    coord = float(coord_str)
+                except ValueError:
+                    self.logger.debug(
+                        f"文件 {label_file} 中坐标格式错误: {stripped_line} "
+                        f"(第{index+2}列: {coord_str})"
+                    )
+                    return "invalid"
+                if coord < 0.0:
+                    self.logger.debug(
+                        f"文件 {label_file} 中存在负数坐标: {stripped_line} "
+                        f"(第{index+2}列: {coord})"
+                    )
+                    return "invalid"
+                if coord > 1.0:
+                    self.logger.debug(
+                        f"文件 {label_file} 中坐标超出范围[0,1]: {stripped_line} "
+                        f"(第{index+2}列: {coord})"
+                    )
+                    return "invalid"
+
+        if not has_non_empty_line:
+            return "empty"
+
+        return "valid"
+
     def _contains_invalid_ctds_data(
         self, label_file: Path, dataset_type: str = "detection"
     ) -> bool:
-        """检查CTDS标签文件是否包含无效数据
-
-        Args:
-            label_file: 标签文件路径
-            dataset_type: 数据集类型 ("detection" 或 "segmentation")
-
-        Returns:
-            bool: 是否包含无效数据
-        """
-        try:
-            with open(label_file, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-
-            # 空文件和只包含空行的文件被认为是有效的
-            # 这些情况在分割和检测数据集中都是正常的
-
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-
-                try:
-                    data = line.split()
-
-                    # 根据数据集类型设置不同的验证标准
-                    if dataset_type == "segmentation":
-                        # 分割数据：至少需要7列（类别 + 至少6个坐标值）
-                        if len(data) < 7:
-                            self.logger.debug(
-                                f"文件 {label_file} 分割数据格式错误，需要至少7列: {line}"
-                            )
-                            return True
-
-                        # 检查列数是否为奇数（类别 + 偶数个坐标）
-                        if len(data) % 2 == 0:
-                            self.logger.debug(
-                                f"文件 {label_file} 分割数据列数应为奇数: {line}"
-                            )
-                            return True
-
-                        # 验证所有坐标值
-                        coord_values = data[1:]
-                    else:
-                        # 检测数据：需要5列（类别 + 4个坐标值）
-                        if len(data) < 5:
-                            self.logger.debug(
-                                f"文件 {label_file} 检测数据格式错误，需要至少5列: {line}"
-                            )
-                            return True
-                        if len(data) != 5:
-                            self.logger.debug(
-                                f"文件 {label_file} 检测数据列数应为5: {line}"
-                            )
-                            return True
-
-                        # 只验证前4个坐标值
-                        coord_values = data[1:5]
-
-                    # 检查类别ID
-                    try:
-                        class_id = int(data[0])
-                        if class_id < 0:
-                            self.logger.debug(
-                                f"文件 {label_file} 中类别ID不能为负数: {line}"
-                            )
-                            return True
-                    except ValueError:
-                        self.logger.debug(f"文件 {label_file} 中类别ID格式错误: {line}")
-                        return True
-
-                    # 检查坐标值范围和有效性
-                    for i, num_str in enumerate(coord_values):
-                        try:
-                            num = float(num_str)
-                            # 检查是否为负数
-                            if num < 0.0:
-                                self.logger.debug(
-                                    f"文件 {label_file} 中存在负数坐标: {line} (第{i+2}列: {num})"
-                                )
-                                return True
-                            # 检查是否超出范围[0,1]
-                            if num > 1.0:
-                                self.logger.debug(
-                                    f"文件 {label_file} 中坐标超出范围[0,1]: {line} (第{i+2}列: {num})"
-                                )
-                                return True
-                        except ValueError:
-                            self.logger.debug(
-                                f"文件 {label_file} 中坐标格式错误: {line} (第{i+2}列: {num_str})"
-                            )
-                            return True
-
-                except ValueError:
-                    self.logger.debug(f"文件 {label_file} 中存在无法解析的数据: {line}")
-                    return True
-
-            return False
-
-        except Exception as e:
-            self.logger.error(f"检查标签文件失败 {label_file}: {str(e)}")
-            return True
+        """兼容旧入口：判断标签是否包含无效数据。"""
+        return self._validate_ctds_label_file(label_file, dataset_type) == "invalid"
 
     def _is_empty_label_file(self, label_file: Path) -> bool:
-        """判断标签文件是否为空（或仅包含空行）"""
-        try:
-            with open(label_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    if line.strip():
-                        return False
-            return True
-        except Exception as e:
-            self.logger.error(f"检查空标签失败 {label_file}: {str(e)}")
-            return False
+        """兼容旧入口：判断标签是否为空（或仅包含空行）。"""
+        return self._validate_ctds_label_file(label_file) == "empty"
 
     def detect_dataset_type(self, dataset_path: str) -> Dict[str, Any]:
-        """自动检测数据集类型（检测还是分割）
-
-        随机从labels目录中选10个txt文件，如果只有5列那就是检测，否则是分割。
-
-        Args:
-            dataset_path: 数据集路径
-
-        Returns:
-            Dict[str, Any]: 检测结果
-        """
+        """自动检测 CTDS 数据集类型（检测 / 分割）。"""
         try:
             self.logger.info(f"开始检测数据集类型，路径: {dataset_path}")
             dataset_dir = validate_path(dataset_path, must_exist=True, must_be_dir=True)
             self.logger.info(f"验证路径成功: {dataset_dir}")
 
-            # 查找labels目录
             labels_dir = dataset_dir
             self.logger.info(f"查找obj_train_data目录: {labels_dir}")
             if not labels_dir.exists():
@@ -1020,7 +920,6 @@ class YOLOProcessor(DatasetProcessor):
                     "dataset_type": "unknown",
                 }
 
-            # 获取标签文件
             label_files = list(labels_dir.glob("*.txt"))
             self.logger.info(f"找到 {len(label_files)} 个txt文件")
             if not label_files:
@@ -1031,7 +930,6 @@ class YOLOProcessor(DatasetProcessor):
                     "dataset_type": "unknown",
                 }
 
-            # 随机选择最多10个文件进行检测
             sample_size = min(100, len(label_files))
             sample_files = random.sample(label_files, sample_size)
             self.logger.info(f"随机选择 {sample_size} 个文件进行分析")
@@ -1040,16 +938,14 @@ class YOLOProcessor(DatasetProcessor):
             segmentation_files = 0
             analyzed_files = []
 
-            # 检查每个样本文件
             for i, label_file in enumerate(sample_files):
                 try:
-                    self.logger.info(f"分析文件 {i+1}/{sample_size}: {label_file.name}")
+                    self.logger.info(f"分析文件 {i + 1}/{sample_size}: {label_file.name}")
                     with open(label_file, "r", encoding="utf-8") as f:
                         lines = f.readlines()
 
                     self.logger.info(f"文件 {label_file.name} 共有 {len(lines)} 行")
 
-                    # 分析文件中的每一行来判断格式
                     detection_lines = 0
                     segmentation_lines = 0
                     valid_lines = 0
@@ -1063,18 +959,16 @@ class YOLOProcessor(DatasetProcessor):
                         valid_lines += 1
 
                         if len(parts) == 5:
-                            # 检测格式：class_id x_center y_center width height
                             detection_lines += 1
-                            if line_num < 3:  # 只记录前3行的详细信息
+                            if line_num < 3:
                                 self.logger.info(
-                                    f"文件 {label_file.name} 第 {line_num+1} 行: {len(parts)} 列 - {line[:50]}..."
+                                    f"文件 {label_file.name} 第 {line_num + 1} 行: {len(parts)} 列 - {line[:50]}..."
                                 )
                         else:
-                            # 其他格式认为是分割
                             segmentation_lines += 1
-                            if line_num < 3:  # 只记录前3行的详细信息
+                            if line_num < 3:
                                 self.logger.info(
-                                    f"文件 {label_file.name} 第 {line_num+1} 行: {len(parts)} 列 - {line[:50]}..."
+                                    f"文件 {label_file.name} 第 {line_num + 1} 行: {len(parts)} 列 - {line[:50]}..."
                                 )
 
                     if valid_lines == 0:
@@ -1083,7 +977,6 @@ class YOLOProcessor(DatasetProcessor):
                         )
                         continue
 
-                    # 根据行数占比判断文件类型（超过50%的行决定文件类型）
                     if detection_lines > segmentation_lines:
                         detection_files += 1
                         file_type = "detection"
@@ -1094,7 +987,6 @@ class YOLOProcessor(DatasetProcessor):
                     else:
                         segmentation_files += 1
                         file_type = "segmentation"
-                        # 取分割行中最常见的列数
                         dominant_columns = max(
                             [
                                 len(line.split())
@@ -1122,7 +1014,6 @@ class YOLOProcessor(DatasetProcessor):
                     self.logger.error(f"分析标签文件失败 {label_file}: {str(e)}")
                     continue
 
-            # 判断数据集类型
             total_analyzed = detection_files + segmentation_files
             self.logger.info(
                 f"分析结果: 检测文件={detection_files}, 分割文件={segmentation_files}, 总计={total_analyzed}"
@@ -1155,7 +1046,7 @@ class YOLOProcessor(DatasetProcessor):
                     "detection_files": detection_files,
                     "segmentation_files": segmentation_files,
                 },
-                "sample_files": analyzed_files[:5],  # 只返回前5个样本
+                "sample_files": analyzed_files[:5],
             }
 
             self.logger.info(f"数据集类型检测完成: {result}")
@@ -1165,26 +1056,21 @@ class YOLOProcessor(DatasetProcessor):
             self.logger.error(f"数据集类型检测异常: {str(e)}")
             return {"success": False, "error": str(e), "dataset_type": "unknown"}
 
-    def _find_image_by_base(self, base_name: str, directory: Path) -> Optional[Path]:
-        """根据文件名基准和支持的扩展名查找图像"""
+    def _build_images_index(self, directory: Path) -> Dict[str, Path]:
+        """建立图像 stem 到文件路径的索引（大小写不敏感）。"""
         if not directory.exists():
-            return None
+            return {}
 
-        # 优先尝试直接匹配常用扩展
-        for ext in self.image_extensions:
-            candidate = directory / f"{base_name}{ext}"
-            if candidate.exists():
-                return candidate
-
-        lower_base = base_name.lower()
         valid_exts = {ext.lower() for ext in self.image_extensions}
+        image_index: Dict[str, Path] = {}
         for entry in directory.iterdir():
             if not entry.is_file():
                 continue
-            if entry.suffix.lower() in valid_exts and entry.stem.lower() == lower_base:
-                return entry
+            if entry.suffix.lower() not in valid_exts:
+                continue
+            image_index[entry.stem.lower()] = entry
+        return image_index
 
-        return None
 
     def convert_yolo_to_ctds_dataset(
         self, yolo_dataset_path: str, output_path: Optional[str] = None
@@ -1298,6 +1184,7 @@ class YOLOProcessor(DatasetProcessor):
             copied_images = 0
             missing_images = []
             train_image_names = []
+            image_index = self._build_images_index(images_dir)
 
             with progress_context(len(label_files), "YOLO转CTDS") as progress:
                 for label_file in label_files:
@@ -1308,7 +1195,7 @@ class YOLOProcessor(DatasetProcessor):
                         copied_labels += 1
 
                         base_name = label_file.stem
-                        image_file = self._find_image_by_base(base_name, images_dir)
+                        image_file = image_index.get(base_name.lower())
 
                         if image_file:
                             target_image = obj_train_data_dir / image_file.name
@@ -1464,11 +1351,17 @@ class YOLOProcessor(DatasetProcessor):
         return create_unified_class_mapping_internal(self, all_classes_info)
 
     def _generate_different_output_name(
-        self, unified_classes: List[str], dataset_paths: List[Path]
+        self,
+        unified_classes: List[str],
+        dataset_paths: List[Path],
+        image_manifest: Optional[List[List[Path]]] = None,
     ) -> str:
         """为不同类型数据集生成输出目录名称。"""
         return generate_different_output_name_internal(
-            self, unified_classes, dataset_paths
+            self,
+            unified_classes,
+            dataset_paths,
+            image_manifest=image_manifest,
         )
 
     def _merge_different_dataset_files(
@@ -1478,6 +1371,7 @@ class YOLOProcessor(DatasetProcessor):
         image_prefix: str,
         unified_classes: List[str],
         class_mappings: List[Dict[int, int]],
+        pre_scanned_images: Optional[List[List[Path]]] = None,
     ) -> Dict[str, Any]:
         """合并不同类型数据集文件
 
@@ -1510,15 +1404,18 @@ class YOLOProcessor(DatasetProcessor):
                 f.write(f"{class_name}\n")
 
         current_index = 1
+        pre_scanned_image_lists = pre_scanned_images or [None] * len(dataset_paths)
 
         for i, dataset_path in enumerate(dataset_paths):
             dataset_start_time = time.time()
             self.logger.info(f"处理数据集 {i+1}/{len(dataset_paths)}: {dataset_path}")
 
             # 获取数据集文件
-            image_files = get_file_list(
-                dataset_path, self.image_extensions, recursive=True
-            )
+            image_files = pre_scanned_image_lists[i]
+            if image_files is None:
+                image_files = get_file_list(
+                    dataset_path, self.image_extensions, recursive=True
+                )
             label_files = get_file_list(
                 dataset_path, [self.label_extension], recursive=True
             )
@@ -1563,10 +1460,10 @@ class YOLOProcessor(DatasetProcessor):
                         )
                         labels_processed += 1
 
-                    current_index += 1
-
                 except Exception as e:
                     self.logger.error(f"处理文件失败 {image_file}: {str(e)}")
+                finally:
+                    current_index += 1
 
             dataset_time = time.time() - dataset_start_time
             dataset_stats.update(
@@ -1649,10 +1546,18 @@ class YOLOProcessor(DatasetProcessor):
         return validate_classes_consistency_internal(self, dataset_paths)
 
     def _generate_output_name(
-        self, classes: List[str], dataset_paths: List[Path]
+        self,
+        classes: List[str],
+        dataset_paths: List[Path],
+        image_manifest: Optional[List[List[Path]]] = None,
     ) -> str:
         """生成输出目录名称。"""
-        return generate_output_name_internal(self, classes, dataset_paths)
+        return generate_output_name_internal(
+            self,
+            classes,
+            dataset_paths,
+            image_manifest=image_manifest,
+        )
 
     def _merge_dataset_files(
         self,
@@ -1660,6 +1565,7 @@ class YOLOProcessor(DatasetProcessor):
         output_dir: Path,
         image_prefix: str,
         classes: List[str],
+        pre_scanned_images: Optional[List[List[Path]]] = None,
     ) -> Dict[str, Any]:
         """合并数据集文件（优化版本）
 
@@ -1699,15 +1605,18 @@ class YOLOProcessor(DatasetProcessor):
                 f.write(f"{class_name}\n")
 
         current_index = 1
+        pre_scanned_image_lists = pre_scanned_images or [None] * len(dataset_paths)
 
         for i, dataset_path in enumerate(dataset_paths):
             dataset_start_time = time.time()
             self.logger.info(f"处理数据集 {i+1}/{len(dataset_paths)}: {dataset_path}")
 
             # 获取数据集文件
-            image_files = get_file_list(
-                dataset_path, self.image_extensions, recursive=True
-            )
+            image_files = pre_scanned_image_lists[i]
+            if image_files is None:
+                image_files = get_file_list(
+                    dataset_path, self.image_extensions, recursive=True
+                )
             label_files = get_file_list(
                 dataset_path, [self.label_extension], recursive=True
             )

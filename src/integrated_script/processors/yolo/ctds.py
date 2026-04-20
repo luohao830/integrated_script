@@ -206,7 +206,12 @@ def execute_ctds_processing_internal(
         with progress_context(len(txt_files), "处理CTDS数据") as progress:
             for txt_file in txt_files:
                 try:
-                    if not keep_empty_labels and processor._is_empty_label_file(txt_file):
+                    validation_status = processor._validate_ctds_label_file(
+                        txt_file,
+                        confirmed_type,
+                    )
+
+                    if validation_status == "empty" and not keep_empty_labels:
                         invalid_count += 1
                         statistics["empty_removed"] += 1
                         invalid_files.append(str(txt_file))
@@ -214,7 +219,7 @@ def execute_ctds_processing_internal(
                         progress.update_progress(1)
                         continue
 
-                    if processor._contains_invalid_ctds_data(txt_file, confirmed_type):
+                    if validation_status == "invalid":
                         invalid_count += 1
                         invalid_files.append(str(txt_file))
                         invalid_labels.append(str(txt_file))

@@ -2,7 +2,11 @@ import json
 from pathlib import Path
 from typing import Tuple
 
+import pytest
+
 from integrated_script.config.settings import ConfigManager
+from integrated_script.processors import yolo_processor as yolo_processor_module
+from integrated_script.processors.yolo import merge as yolo_merge_module
 from integrated_script.processors.yolo_processor import YOLOProcessor
 
 
@@ -305,33 +309,144 @@ def test_merge_datasets_merges_same_classes_and_copies_files(tmp_path: Path) -> 
     assert len(list((output_dir / "labels").glob("*.txt"))) == 2
 
 
-def test_merge_different_type_datasets_builds_unified_classes_and_remaps_labels(
+
+
+def test_merge_datasets_output_name_generation_and_merge_reuse_scanned_files(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     d1 = tmp_path / "d1"
     d2 = tmp_path / "d2"
-    _create_yolo_dataset_with_classes(d1, ["car"], [("a", 0)])
-    _create_yolo_dataset_with_classes(d2, ["bus", "car"], [("b", 1)])
+    _create_yolo_dataset_with_classes(d1, ["car", "bus"], [("a", 0)])
+    _create_yolo_dataset_with_classes(d2, ["car", "bus"], [("b", 1)])
+
+    scanned_manifest: list[list[Path]] = []
+
+    original_get_file_list = yolo_merge_module.get_file_list
+
+    def recording_get_file_list(*args, **kwargs):
+        files = original_get_file_list(*args, **kwargs)
+        path_arg = Path(args[0]) if args else Path(kwargs["directory"])
+        extensions = args[1] if len(args) > 1 else kwargs.get("extensions")
+        recursive = args[2] if len(args) > 2 else kwargs.get("recursive", False)
+        normalized_ext = [ext.lower() for ext in extensions] if extensions else []
+
+        if recursive and set(normalized_ext) == {".jpg", ".jpeg", ".png", ".bmp"}:
+            if path_arg in {d1, d2}:
+                scanned_manifest.append(files)
+
+        return files
+
+    monkeypatch.setattr(yolo_merge_module, "get_file_list", recording_get_file_list)
 
     processor = _build_processor(tmp_path)
-    result = processor.merge_different_type_datasets(
+
+    used_manifest_ids: list[int] = []
+    used_manifest_sizes: list[int] = []
+
+    original_generate_output_name_internal = (
+        yolo_merge_module.generate_output_name_internal
+    )
+
+    def wrapped_generate_output_name_internal(
+        _processor,
+        classes,
+        dataset_paths,
+        image_manifest=None,
+    ):
+        output_name = original_generate_output_name_internal(
+            _processor,
+            classes,
+            dataset_paths,
+            image_manifest=image_manifest,
+        )
+        manifest = getattr(_processor, "_merge_image_manifest", None)
+        if manifest:
+            used_manifest_ids.extend(id(files) for files in manifest)
+            used_manifest_sizes.extend(len(files) for files in manifest)
+        return output_name
+
+    monkeypatch.setattr(
+        yolo_processor_module,
+        "generate_output_name_internal",
+        wrapped_generate_output_name_internal,
+    )
+
+    result = processor.merge_datasets(
         [str(d1), str(d2)],
         str(tmp_path / "out"),
-        output_name="mixed",
-        image_prefix="mix",
+        output_name=None,
+        image_prefix="img",
     )
 
     assert result["success"] is True
     assert result["merged_datasets"] == 2
     assert result["total_images"] == 2
     assert result["total_labels"] == 2
-    assert result["unified_classes"] == ["car", "bus"]
+    assert len(scanned_manifest) == 2
+    assert len(used_manifest_sizes) == 2
+    assert used_manifest_sizes == [1, 1]
+    assert used_manifest_ids
+    assert {id(files) for files in scanned_manifest} == set(used_manifest_ids)
 
-    output_dir = Path(result["output_path"])
-    classes = (output_dir / "classes.txt").read_text(encoding="utf-8").strip().splitlines()
-    assert classes == ["car", "bus"]
 
-    label_files = list((output_dir / "labels").glob("*.txt"))
-    assert len(label_files) == 2
-    first_ids = {int(f.read_text(encoding="utf-8").split()[0]) for f in label_files}
-    assert first_ids <= {0, 1}
+def test_ctds_processing_reads_each_label_file_once_when_dropping_empty_labels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "ctds"
+    _create_basic_ctds_dataset(source)
+
+    processor = _build_processor(tmp_path)
+
+    read_count: dict[Path, int] = {}
+    original_validate = processor._validate_ctds_label_file
+
+    def wrapped_validate(label_file: Path, dataset_type: str = "detection"):
+        read_count[label_file] = read_count.get(label_file, 0) + 1
+        return original_validate(label_file, dataset_type)
+
+    monkeypatch.setattr(processor, "_validate_ctds_label_file", wrapped_validate)
+
+    pre_result = processor.process_ctds_dataset(str(source), output_name="demo")
+    result = processor.continue_ctds_processing(
+        pre_result,
+        confirmed_type="detection",
+        keep_empty_labels=False,
+    )
+
+    assert result["success"] is True
+    assert read_count
+    assert all(count == 1 for count in read_count.values())
+
+
+def test_convert_yolo_to_ctds_builds_images_index_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dataset = tmp_path / "dataset"
+    images, labels = _create_basic_yolo_dataset(dataset)
+
+    (dataset / "classes.txt").write_text("car\n", encoding="utf-8")
+    for idx in range(3):
+        stem = f"item_{idx}"
+        (images / f"{stem}.jpg").write_text("img", encoding="utf-8")
+        (labels / f"{stem}.txt").write_text("0 0.5 0.5 0.2 0.2\n", encoding="utf-8")
+
+    processor = _build_processor(tmp_path)
+
+    index_build_count = {"count": 0}
+    original_build_index = processor._build_images_index
+
+    def wrapped_build_index(directory: Path):
+        index_build_count["count"] += 1
+        return original_build_index(directory)
+
+    monkeypatch.setattr(processor, "_build_images_index", wrapped_build_index)
+
+    result = processor.convert_yolo_to_ctds_dataset(str(dataset))
+
+    assert result["success"] is True
+    assert result["statistics"]["labels_copied"] == 3
+    assert result["statistics"]["images_copied"] == 3
+    assert index_build_count["count"] == 1
