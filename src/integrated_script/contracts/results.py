@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-
 _RESERVED_FIELDS = {"success", "message", "error", "error_code"}
 
 
@@ -29,14 +28,14 @@ class OperationResult:
             raw_message = copied.get("message", "")
         else:
             raw_error = copied.get("error")
-            raw_message = raw_error if raw_error not in (None, "") else copied.get("message", "")
+            raw_message = (
+                raw_error if raw_error not in (None, "") else copied.get("message", "")
+            )
 
         message = "" if raw_message is None else str(raw_message)
         error_code = copied.get("error_code")
         payload = {
-            key: value
-            for key, value in copied.items()
-            if key not in _RESERVED_FIELDS
+            key: value for key, value in copied.items() if key not in _RESERVED_FIELDS
         }
 
         return cls(
@@ -81,4 +80,3 @@ class OperationResult:
                 result["error_code"] = self.error_code
 
         return result
-

@@ -137,6 +137,7 @@ def test_validate_path_checks_dir_and_file_requirements(
     with pytest.raises(PathError):
         processor.validate_path(tmp_path, must_be_file=True)
 
+
 def test_validate_path_raises_when_missing(tmp_path: Path) -> None:
     processor = DummyProcessor(config=_build_config(tmp_path))
 

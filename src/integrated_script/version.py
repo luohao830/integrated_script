@@ -12,19 +12,29 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional, Tuple
 
-try:
-    from importlib.metadata import PackageNotFoundError, version as package_version
-except ImportError:  # pragma: no cover
+PackageVersionFunc = Callable[[str], str]
+
+
+def _resolve_metadata_api() -> Tuple[type[Exception], Optional[PackageVersionFunc]]:
     try:
-        from importlib_metadata import (  # type: ignore[import-not-found]
-            PackageNotFoundError,
-            version as package_version,
-        )
+        import importlib.metadata as metadata
+
+        return metadata.PackageNotFoundError, metadata.version
     except ImportError:  # pragma: no cover
-        PackageNotFoundError = Exception  # type: ignore[assignment]
-        package_version = None
+        try:
+            import importlib_metadata as metadata_backport  # type: ignore[import-not-found]
+
+            return (
+                metadata_backport.PackageNotFoundError,
+                metadata_backport.version,
+            )
+        except ImportError:  # pragma: no cover
+            return Exception, None
+
+
+PackageNotFound, package_version = _resolve_metadata_api()
 
 
 _DEFAULT_VERSION = "0.0.0"
@@ -47,7 +57,7 @@ def get_version() -> str:
     if package_version is not None:
         try:
             return package_version(_PACKAGE_NAME)
-        except PackageNotFoundError:
+        except PackageNotFound:
             pass
 
     pyproject_file = _find_pyproject(Path(__file__))

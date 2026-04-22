@@ -41,7 +41,9 @@ def setup_argument_parser():
     )
 
     # 全局选项
-    parser.add_argument("--version", action="version", version=f"%(prog)s {get_version()}")
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {get_version()}"
+    )
 
     parser.add_argument("--config", type=str, help="配置文件路径 (JSON或YAML格式)")
 

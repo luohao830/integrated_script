@@ -19,7 +19,6 @@ import requests
 
 from version_manager import VersionManager
 
-
 GITHUB_ACTIONS_API_URL_ENV = "INTEGRATED_SCRIPT_GITHUB_ACTIONS_API_URL"
 
 
@@ -241,11 +240,15 @@ class ReleaseManager:
             current_branch = result.stdout.strip()
 
             # 推送当前分支
-            self.local_executor.run(["git", "push", "origin", current_branch], check=True)
+            self.local_executor.run(
+                ["git", "push", "origin", current_branch], check=True
+            )
             print(f"✅ 已推送分支 {current_branch}")
 
             # 推送标签
-            self.local_executor.run(["git", "push", "origin", f"v{version}"], check=True)
+            self.local_executor.run(
+                ["git", "push", "origin", f"v{version}"], check=True
+            )
             print(f"✅ 已推送标签 v{version}")
 
             return True
@@ -343,7 +346,6 @@ class ReleaseManager:
             elapsed = int(self.clock.now() - start_time)
             print(f"   等待中... ({elapsed}s/{timeout}s)")
             self.clock.sleep(check_interval)
-
 
         print("⏰ 等待超时，请手动检查 GitHub Actions 状态")
         return False

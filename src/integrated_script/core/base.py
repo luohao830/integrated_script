@@ -30,7 +30,9 @@ class BaseProcessor(ABC):
         name (str): 处理器名称
     """
 
-    def __init__(self, config: Optional[ConfigManager] = None, name: Optional[str] = None):
+    def __init__(
+        self, config: Optional[ConfigManager] = None, name: Optional[str] = None
+    ):
         """初始化基础处理器
 
         Args:

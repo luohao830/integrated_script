@@ -17,8 +17,6 @@ def test_render_result_prefers_error_field_on_failure(monkeypatch) -> None:
     assert any("错误信息: 来自 error 字段" in line for line in printed)
 
 
-
-
 def test_render_result_prints_statistics_adjusted_path_hint(monkeypatch) -> None:
     printed: List[str] = []
     monkeypatch.setattr(

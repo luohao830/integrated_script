@@ -106,7 +106,7 @@ class InteractiveInterface:
 
                 raise ProcessingError(
                     f"处理器初始化失败: {str(e)}", context={"processor": processor_type}
-                )
+                ) from e
 
         return self.processors[processor_type]
 
@@ -148,7 +148,9 @@ class InteractiveInterface:
             )
 
             # 获取项目名称
-            project_name: Optional[str] = input("\n请输入处理后的项目名称（留空自动生成）: ").strip()
+            project_name: Optional[str] = input(
+                "\n请输入处理后的项目名称（留空自动生成）: "
+            ).strip()
             if not project_name:
                 project_name = None
 
@@ -978,9 +980,7 @@ class InteractiveInterface:
                 )
                 if confirm in ["y", "yes", "是"]:
                     print("\n正在清理文件...")
-                    result = workflow.clean_unmatched_files(
-                        dataset_path, dry_run=False
-                    )
+                    result = workflow.clean_unmatched_files(dataset_path, dry_run=False)
                     self._display_clean_result(result)
                 else:
                     print("\n操作已取消")
@@ -1285,7 +1285,7 @@ class InteractiveInterface:
                 print(f"数据集 {i+1}: {info['dataset_path'].name}")
                 print(f"  类别数: {len(info['classes'])}")
                 print(f"  类别: {', '.join(info['classes'][:5])}")
-                if len(info['classes']) > 5:
+                if len(info["classes"]) > 5:
                     print(f"  ... 等共 {len(info['classes'])} 个类别")
                 print()
 
@@ -1364,7 +1364,9 @@ class InteractiveInterface:
 
             # 预览统一类别映射
             print("\n正在分析类别映射...")
-            unified_classes, class_mappings = workflow.create_unified_class_mapping(all_classes_info)
+            unified_classes, class_mappings = workflow.create_unified_class_mapping(
+                all_classes_info
+            )
 
             print("\n=== 统一类别映射预览 ===")
             print(f"合并后总类别数: {len(unified_classes)}")
@@ -1376,7 +1378,7 @@ class InteractiveInterface:
             for i, (info, mapping) in enumerate(zip(all_classes_info, class_mappings)):
                 print(f"数据集 {i+1} ({info['dataset_path'].name}):")
                 for old_id, new_id in mapping.items():
-                    old_class = info['classes'][old_id]
+                    old_class = info["classes"][old_id]
                     new_class = unified_classes[new_id]
                     if old_id != new_id:
                         print(f"  {old_id}({old_class}) -> {new_id}({new_class})")
@@ -1442,18 +1444,26 @@ class InteractiveInterface:
                     stats = result["statistics"]
                     print("\n各数据集处理统计:")
                     for i, stat in enumerate(stats):
-                        dataset_name = Path(stat['dataset_path']).name
+                        dataset_name = Path(stat["dataset_path"]).name
                         print(f"  {i+1}. {dataset_name}:")
-                        print(f"     图片: {stat['images_processed']}/{stat['images_count']}")
-                        print(f"     标签: {stat['labels_processed']}/{stat['labels_count']}")
-                        print(f"     索引范围: {stat['start_index']}-{stat['end_index']}")
+                        print(
+                            f"     图片: {stat['images_processed']}/{stat['images_count']}"
+                        )
+                        print(
+                            f"     标签: {stat['labels_processed']}/{stat['labels_count']}"
+                        )
+                        print(
+                            f"     索引范围: {stat['start_index']}-{stat['end_index']}"
+                        )
                         print(f"     处理时间: {stat['processing_time']}秒")
 
                 print("\n类别映射信息:")
-                print(f"  - 原始类别总数: {sum(len(info['classes']) for info in all_classes_info)}")
+                print(
+                    f"  - 原始类别总数: {sum(len(info['classes']) for info in all_classes_info)}"
+                )
                 print(f"  - 统一后类别数: {len(result['unified_classes'])}")
                 print(f"  - 统一类别列表: {', '.join(result['unified_classes'][:5])}")
-                if len(result['unified_classes']) > 5:
+                if len(result["unified_classes"]) > 5:
                     print(f"    ... 等共 {len(result['unified_classes'])} 个类别")
 
                 print(f"\n✓ 合并后的数据集已保存到: {result['output_path']}")
@@ -1693,7 +1703,6 @@ class InteractiveInterface:
                 include_hidden=False,
             )
 
-
             total = result.get("total_files", 0)
             loaded = result.get("loaded_without_issue", 0)
             repaired = result.get("repaired_count", 0)
@@ -1709,9 +1718,7 @@ class InteractiveInterface:
                     print(f"  - {failure.get('file')}: {failure.get('error')}")
 
         except UserInterruptError:
-            print(
-                "\n修复操作被用户中断 (Code: USER_INTERRUPT)，按回车键继续..."
-            )
+            print("\n修复操作被用户中断 (Code: USER_INTERRUPT)，按回车键继续...")
             input()
         except Exception as e:
             print(f"\n修复失败: {e}")
@@ -2527,9 +2534,13 @@ class InteractiveInterface:
             workflow = FileWorkflow(processor)
 
             print("\n正在扫描目录...")
-            preview_result = workflow.delete_json_files_recursive(target_dir, dry_run=True)
+            preview_result = workflow.delete_json_files_recursive(
+                target_dir, dry_run=True
+            )
             json_files = preview_result.get("json_files", [])
-            total_files = int(preview_result.get("statistics", {}).get("total_files", 0))
+            total_files = int(
+                preview_result.get("statistics", {}).get("total_files", 0)
+            )
 
             if total_files == 0:
                 print("\n未找到任何JSON文件")
@@ -2996,7 +3007,11 @@ class InteractiveInterface:
             # 3. 检查核心模块（静默）
             try:
                 from ..config.settings import ConfigManager  # noqa: F401
-                from ..processors import FileProcessor, ImageProcessor, YOLOProcessor  # noqa: F401
+                from ..processors import (  # noqa: F401
+                    FileProcessor as _FileProcessor,
+                    ImageProcessor as _ImageProcessor,
+                    YOLOProcessor as _YOLOProcessor,
+                )
             except ImportError:
                 pass  # 静默忽略导入错误
 
@@ -3264,7 +3279,6 @@ image:
 
         self._pause()
 
-
     def _config_reset(self) -> None:
         """重置为默认配置"""
         try:
@@ -3492,7 +3506,9 @@ image:
                 "png",
                 "webp",
             ]:
-                updates["image_processing"]["default_output_format"] = output_format.lower()
+                updates["image_processing"][
+                    "default_output_format"
+                ] = output_format.lower()
 
             jpeg_quality = self._get_int_input(
                 f"JPEG质量 (1-100) [{image_config.get('jpeg_quality', 95)}]: ",
@@ -3553,7 +3569,6 @@ image:
 
         self._pause()
 
-
     def _config_modify_yolo(self) -> None:
         """修改YOLO配置"""
         try:
@@ -3600,7 +3615,6 @@ image:
 
         self._pause()
 
-
     def _config_modify_ui(self) -> None:
         """修改界面配置"""
         try:
@@ -3644,7 +3658,6 @@ image:
 
         self._pause()
 
-
     def _return_to_main_menu(self) -> None:
         """返回主菜单"""
         # 清空菜单栈，直接返回主菜单
@@ -3671,7 +3684,11 @@ image:
                     user_input = raw_input.strip()
                 else:
                     raw_input = input(prompt)
-                    if allow_space_empty and raw_input != "" and raw_input.strip() == "":
+                    if (
+                        allow_space_empty
+                        and raw_input != ""
+                        and raw_input.strip() == ""
+                    ):
                         return ""
                     user_input = raw_input.strip()
 
@@ -4236,8 +4253,12 @@ image:
     def _check_core_modules(self) -> bool:
         """检查核心模块"""
         try:
-            from ..config.settings import ConfigManager  # noqa: F401
-            from ..processors import FileProcessor, ImageProcessor, YOLOProcessor  # noqa: F401
+            from ..config.settings import ConfigManager as _ConfigManager  # noqa: F401
+            from ..processors import (  # noqa: F401
+                FileProcessor as _FileProcessor,
+                ImageProcessor as _ImageProcessor,
+                YOLOProcessor as _YOLOProcessor,
+            )
 
             return True
         except Exception:

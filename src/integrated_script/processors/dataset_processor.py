@@ -284,9 +284,7 @@ class DatasetProcessor(BaseProcessor):
         else:
             self.logger.info("没有issues，保持success=True")
 
-        self.logger.info(
-            f"YOLO数据集验证完成: {stats}, success={result['success']}"
-        )
+        self.logger.info(f"YOLO数据集验证完成: {stats}, success={result['success']}")
         return result
 
     def _detect_dataset_root(self, input_path: Path) -> Path:

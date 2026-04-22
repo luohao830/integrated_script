@@ -259,7 +259,11 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
 
         frame = inspect.currentframe()
         caller_frame = frame.f_back if frame else None
-        name = caller_frame.f_globals.get("__name__", "unknown") if caller_frame else "unknown"
+        name = (
+            caller_frame.f_globals.get("__name__", "unknown")
+            if caller_frame
+            else "unknown"
+        )
 
     return _log_manager.get_logger(name)
 

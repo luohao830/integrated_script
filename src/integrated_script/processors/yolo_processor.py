@@ -823,7 +823,9 @@ class YOLOProcessor(DatasetProcessor):
             try:
                 class_id = int(data[0])
             except ValueError:
-                self.logger.debug(f"文件 {label_file} 中类别ID格式错误: {stripped_line}")
+                self.logger.debug(
+                    f"文件 {label_file} 中类别ID格式错误: {stripped_line}"
+                )
                 return "invalid"
             if class_id < 0:
                 self.logger.debug(
@@ -905,7 +907,9 @@ class YOLOProcessor(DatasetProcessor):
 
             for i, label_file in enumerate(sample_files):
                 try:
-                    self.logger.info(f"分析文件 {i + 1}/{sample_size}: {label_file.name}")
+                    self.logger.info(
+                        f"分析文件 {i + 1}/{sample_size}: {label_file.name}"
+                    )
                     with open(label_file, "r", encoding="utf-8") as f:
                         lines = f.readlines()
 
@@ -1035,7 +1039,6 @@ class YOLOProcessor(DatasetProcessor):
                 continue
             image_index[entry.stem.lower()] = entry
         return image_index
-
 
     def convert_yolo_to_ctds_dataset(
         self, yolo_dataset_path: str, output_path: Optional[str] = None
@@ -1369,7 +1372,13 @@ class YOLOProcessor(DatasetProcessor):
                 f.write(f"{class_name}\n")
 
         current_index = 1
-        pre_scanned_image_lists = pre_scanned_images or [None] * len(dataset_paths)
+        pre_scanned_image_lists: List[Optional[List[Path]]]
+        if pre_scanned_images is not None:
+            pre_scanned_image_lists = [
+                image_list for image_list in pre_scanned_images
+            ]
+        else:
+            pre_scanned_image_lists = [None for _ in dataset_paths]
 
         for i, dataset_path in enumerate(dataset_paths):
             dataset_start_time = time.time()
@@ -1570,7 +1579,13 @@ class YOLOProcessor(DatasetProcessor):
                 f.write(f"{class_name}\n")
 
         current_index = 1
-        pre_scanned_image_lists = pre_scanned_images or [None] * len(dataset_paths)
+        pre_scanned_image_lists: List[Optional[List[Path]]]
+        if pre_scanned_images is not None:
+            pre_scanned_image_lists = [
+                image_list for image_list in pre_scanned_images
+            ]
+        else:
+            pre_scanned_image_lists = [None for _ in dataset_paths]
 
         for i, dataset_path in enumerate(dataset_paths):
             dataset_start_time = time.time()

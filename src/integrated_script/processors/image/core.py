@@ -524,7 +524,9 @@ class ImageProcessor(BaseProcessor):
                 "修复图像需要安装 opencv-python，可通过 pip install opencv-python 安装。"
             )
 
-        dir_path = validate_path(os.fsdecode(directory), must_exist=True, must_be_dir=True)
+        dir_path = validate_path(
+            os.fsdecode(directory), must_exist=True, must_be_dir=True
+        )
 
         normalized_extensions = self._normalize_extensions(extensions)
         if not normalized_extensions:
@@ -765,7 +767,9 @@ class ImageProcessor(BaseProcessor):
                     source_img.save(output_file)
                 else:
                     # 直接调整到目标尺寸
-                    resized_img = source_img.resize(target_size, Image.Resampling.LANCZOS)
+                    resized_img = source_img.resize(
+                        target_size, Image.Resampling.LANCZOS
+                    )
                     resized_img.save(output_file)
 
         except Exception as e:

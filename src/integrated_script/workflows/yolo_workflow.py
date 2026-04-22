@@ -210,7 +210,9 @@ class YoloWorkflow:
             normalized = self._normalize_error(error)
             return self._legacy_failure(normalized)
 
-    def collect_all_classes_info(self, dataset_paths: List[Any]) -> List[Dict[str, Any]]:
+    def collect_all_classes_info(
+        self, dataset_paths: List[Any]
+    ) -> List[Dict[str, Any]]:
         return self.processor._collect_all_classes_info(dataset_paths)
 
     def create_unified_class_mapping(
@@ -259,4 +261,3 @@ class YoloWorkflow:
             error_code=normalized.code,
             payload={"error_details": normalized.details},
         ).to_legacy()
-

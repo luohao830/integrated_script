@@ -1,10 +1,11 @@
 from pathlib import Path
 from types import SimpleNamespace
-from typing import List
+from typing import List, cast
 
 import pytest
 
 from integrated_script.main import (
+    ConfigManager,
     load_config_from_args,
     main,
     run_build_mode,
@@ -86,6 +87,7 @@ def test_setup_argument_parser_version_matches_unified_source(capsys) -> None:
     captured = capsys.readouterr()
     assert get_version() in captured.out
 
+
 def test_setup_logging_from_args_respects_quiet(monkeypatch) -> None:
     captured = {}
 
@@ -140,12 +142,13 @@ def test_load_config_from_args_loads_custom_config_success(monkeypatch, tmp_path
     config_path = tmp_path / "custom.json"
     config_path.write_text('{"version": "1.0.0"}', encoding="utf-8")
 
-    manager = load_config_from_args(_args(config=str(config_path)))
-
     monkeypatch.setattr("integrated_script.main.get_logger", lambda _name: logger)
+
+    manager = load_config_from_args(_args(config=str(config_path)))
 
     assert manager is not None
     assert manager.config_file == config_path
+    assert any("已加载配置文件" in message for message in logger.infos)
 
 
 def test_load_config_from_args_exits_when_config_load_fails(monkeypatch, tmp_path: Path) -> None:
@@ -169,7 +172,7 @@ def test_run_interactive_mode_returns_zero_on_success(monkeypatch) -> None:
         _DummyInterfaceSuccess,
     )
 
-    result = run_interactive_mode(config_manager=object())
+    result = run_interactive_mode(config_manager=cast(ConfigManager, object()))
 
     assert result == 0
 
@@ -182,7 +185,7 @@ def test_run_interactive_mode_returns_130_on_keyboard_interrupt(
         _DummyInterfaceInterrupt,
     )
 
-    result = run_interactive_mode(config_manager=object())
+    result = run_interactive_mode(config_manager=cast(ConfigManager, object()))
 
     assert result == 130
 
@@ -196,7 +199,7 @@ def test_run_interactive_mode_returns_one_on_exception(monkeypatch) -> None:
     )
     monkeypatch.setattr("integrated_script.main.get_logger", lambda _name: logger)
 
-    result = run_interactive_mode(config_manager=object())
+    result = run_interactive_mode(config_manager=cast(ConfigManager, object()))
 
     assert result == 1
     assert any("交互式模式运行失败" in message for message in logger.errors)
@@ -333,4 +336,19 @@ def test_main_returns_one_on_unhandled_exception(monkeypatch) -> None:
 def test_unified_version_matches_pyproject() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
-    assert get_version() in pyproject
+
+    in_project_section = False
+    pyproject_version = None
+    for line in pyproject.splitlines():
+        stripped = line.strip()
+        if stripped == "[project]":
+            in_project_section = True
+            continue
+        if in_project_section and stripped.startswith("[") and stripped != "[project]":
+            break
+        if in_project_section and stripped.startswith("version"):
+            pyproject_version = stripped.split("=", 1)[1].strip().strip("\"'")
+            break
+
+    assert pyproject_version is not None
+    assert get_version() == pyproject_version

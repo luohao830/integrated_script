@@ -266,8 +266,6 @@ def test_clean_unmatched_files_handles_empty_labels_in_dry_run(tmp_path: Path) -
     assert empty_label.exists()
 
 
-
-
 def _create_yolo_dataset_with_classes(
     dataset: Path,
     classes: list[str],
@@ -307,8 +305,6 @@ def test_merge_datasets_merges_same_classes_and_copies_files(tmp_path: Path) -> 
     assert (output_dir / "classes.txt").exists()
     assert len(list((output_dir / "images").glob("*.jpg"))) == 2
     assert len(list((output_dir / "labels").glob("*.txt"))) == 2
-
-
 
 
 def test_merge_datasets_output_name_generation_and_merge_reuse_scanned_files(
@@ -360,10 +356,9 @@ def test_merge_datasets_output_name_generation_and_merge_reuse_scanned_files(
             dataset_paths,
             image_manifest=image_manifest,
         )
-        manifest = getattr(_processor, "_merge_image_manifest", None)
-        if manifest:
-            used_manifest_ids.extend(id(files) for files in manifest)
-            used_manifest_sizes.extend(len(files) for files in manifest)
+        if image_manifest:
+            used_manifest_ids.extend(id(files) for files in image_manifest)
+            used_manifest_sizes.extend(len(files) for files in image_manifest)
         return output_name
 
     monkeypatch.setattr(

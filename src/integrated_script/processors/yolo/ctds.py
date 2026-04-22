@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 from ...config.exceptions import DatasetError
 from ...core.progress import progress_context
-from ...core.utils import copy_file_safe, create_directory, move_file_safe, validate_path
+from ...core.utils import (
+    copy_file_safe,
+    create_directory,
+    move_file_safe,
+    validate_path,
+)
 
 if TYPE_CHECKING:
     from ..yolo_processor import YOLOProcessor
@@ -114,9 +119,11 @@ def continue_ctds_processing_internal(
             obj_train_data_path=obj_train_data_path,
             confirmed_type=confirmed_type,
             pre_detection_result=pre_detection_result,
-            keep_empty_labels=pre_result.get("keep_empty_labels", False)
-            if keep_empty_labels is None
-            else keep_empty_labels,
+            keep_empty_labels=(
+                pre_result.get("keep_empty_labels", False)
+                if keep_empty_labels is None
+                else keep_empty_labels
+            ),
         )
 
     except Exception as e:
@@ -170,8 +177,12 @@ def execute_ctds_processing_internal(
                 "missing_labels": 0,
             },
         }
-        processed_files: Dict[str, Any] = cast(Dict[str, Any], result["processed_files"])
-        invalid_details: Dict[str, Any] = cast(Dict[str, Any], result["invalid_details"])
+        processed_files: Dict[str, Any] = cast(
+            Dict[str, Any], result["processed_files"]
+        )
+        invalid_details: Dict[str, Any] = cast(
+            Dict[str, Any], result["invalid_details"]
+        )
         invalid_files: List[str] = cast(List[str], result["invalid_files"])
         statistics: Dict[str, int] = cast(Dict[str, int], result["statistics"])
         processed_images: List[str] = cast(List[str], processed_files["images"])
@@ -317,7 +328,9 @@ def execute_ctds_processing_internal(
                         target_dir = candidate
                         break
                     suffix += 1
-                processor.logger.warning(f"目标目录已存在，使用新名称: {target_dir.name}")
+                processor.logger.warning(
+                    f"目标目录已存在，使用新名称: {target_dir.name}"
+                )
 
             try:
                 output_dir.rename(target_dir)

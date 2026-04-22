@@ -826,8 +826,6 @@ def test_yolo_process_xlabel_auto_displays_detection_failure(
     assert not any("未检测到有效标注" in line for line in printed)
 
 
-
-
 def test_display_result_delegates_to_presenter(interface_with_non_exe, monkeypatch) -> None:
     captured: Dict[str, Any] = {}
 
@@ -994,6 +992,7 @@ def test_file_workflow_rename_sync_preserves_legacy_defaults() -> None:
 
     assert processor.last_call == ("/tmp/images", "/tmp/labels", "demo", 5, False)
     assert result["success"] is True
+
 
 def test_yolo_merge_datasets_uses_yolo_workflow_adapter(
     interface_with_non_exe, monkeypatch, tmp_path

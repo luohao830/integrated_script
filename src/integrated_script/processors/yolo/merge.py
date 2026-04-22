@@ -37,7 +37,9 @@ def merge_datasets_internal(
 
         classes_validation = processor._validate_classes_consistency(validated_paths)
         if not classes_validation["consistent"]:
-            raise DatasetError(f"数据集classes.txt不一致: {classes_validation['details']}")
+            raise DatasetError(
+                f"数据集classes.txt不一致: {classes_validation['details']}"
+            )
 
         common_classes = classes_validation["classes"]
 
@@ -47,16 +49,11 @@ def merge_datasets_internal(
                 get_file_list(dataset_path, processor.image_extensions, recursive=True)
                 for dataset_path in validated_paths
             ]
-            processor._merge_image_manifest = pre_scanned_images
-            try:
-                output_name = processor._generate_output_name(
-                    common_classes,
-                    validated_paths,
-                    image_manifest=pre_scanned_images,
-                )
-            finally:
-                if hasattr(processor, "_merge_image_manifest"):
-                    delattr(processor, "_merge_image_manifest")
+            output_name = processor._generate_output_name(
+                common_classes,
+                validated_paths,
+                image_manifest=pre_scanned_images,
+            )
 
         output_dir = Path(output_path) / output_name
         create_directory(output_dir)
@@ -84,7 +81,7 @@ def merge_datasets_internal(
 
     except Exception as e:
         processor.logger.error(f"数据集合并失败: {str(e)}")
-        raise DatasetError(f"数据集合并失败: {str(e)}")
+        raise DatasetError(f"数据集合并失败: {str(e)}") from e
 
 
 def merge_different_type_datasets_internal(
@@ -157,7 +154,7 @@ def merge_different_type_datasets_internal(
 
     except Exception as e:
         processor.logger.error(f"不同类型数据集合并失败: {str(e)}")
-        raise DatasetError(f"不同类型数据集合并失败: {str(e)}")
+        raise DatasetError(f"不同类型数据集合并失败: {str(e)}") from e
 
 
 def collect_all_classes_info_internal(
@@ -169,7 +166,9 @@ def collect_all_classes_info_internal(
     for i, dataset_path in enumerate(dataset_paths):
         classes_file = dataset_path / processor.classes_file
         if not classes_file.exists():
-            raise DatasetError(f"数据集 {dataset_path} 缺少 {processor.classes_file} 文件")
+            raise DatasetError(
+                f"数据集 {dataset_path} 缺少 {processor.classes_file} 文件"
+            )
 
         try:
             with open(classes_file, "r", encoding="utf-8") as f:
@@ -183,7 +182,7 @@ def collect_all_classes_info_internal(
                 }
             )
         except Exception as e:
-            raise DatasetError(f"读取 {classes_file} 失败: {str(e)}")
+            raise DatasetError(f"读取 {classes_file} 失败: {str(e)}") from e
 
     return all_classes_info
 
@@ -279,7 +278,9 @@ def merge_dataset_parallel_internal(
                     batch_labels += 1
 
             except Exception as e:
-                processor.logger.error(f"复制文件失败 {src_file} -> {dst_file}: {str(e)}")
+                processor.logger.error(
+                    f"复制文件失败 {src_file} -> {dst_file}: {str(e)}"
+                )
                 batch_failed += 1
 
         with lock:
@@ -309,7 +310,9 @@ def merge_dataset_parallel_internal(
         f"使用 {max_workers} 个线程处理 {len(batches)} 个批次，每批次 {batch_size} 个文件"
     )
 
-    with progress_context(len(image_files), f"并行合并数据集 {dataset_num}") as progress:
+    with progress_context(
+        len(image_files), f"并行合并数据集 {dataset_num}"
+    ) as progress:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_batch = {
                 executor.submit(copy_file_batch, batch): batch for batch in batches
@@ -327,7 +330,9 @@ def merge_dataset_parallel_internal(
                     progress.update_progress(len(batch))
 
     if failed_count > 0:
-        processor.logger.warning(f"数据集 {dataset_num} 有 {failed_count} 个文件复制失败")
+        processor.logger.warning(
+            f"数据集 {dataset_num} 有 {failed_count} 个文件复制失败"
+        )
 
     return {
         "images_processed": images_processed,
@@ -379,9 +384,7 @@ def generate_different_output_name_internal(
     if len(unified_classes) > 3:
         classes_prefix += f"_etc{len(unified_classes)}"
 
-    output_name = (
-        f"{classes_prefix}_mixed_{len(dataset_paths)}ds_{total_images}imgs"
-    )
+    output_name = f"{classes_prefix}_mixed_{len(dataset_paths)}ds_{total_images}imgs"
     output_name = re.sub(r'[<>:"/\\|?*]', "_", output_name)
     return output_name
 

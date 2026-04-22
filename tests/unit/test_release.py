@@ -330,27 +330,27 @@ def test_release_stops_when_git_status_fails(tmp_path: Path, monkeypatch) -> Non
         "vm_release": False,
     }
 
+    def _mark_run_tests() -> bool:
+        called["run_tests"] = True
+        return True
+
+    def _mark_build_executable() -> bool:
+        called["build_executable"] = True
+        return True
+
+    def _mark_test_executable() -> bool:
+        called["test_executable"] = True
+        return True
+
+    def _mark_vm_release(*_args) -> str:
+        called["vm_release"] = True
+        return "2.0.4"
+
     monkeypatch.setattr(manager, "check_git_status", lambda: False)
-    monkeypatch.setattr(
-        manager,
-        "run_tests",
-        lambda: called.__setitem__("run_tests", True) or True,
-    )
-    monkeypatch.setattr(
-        manager,
-        "build_executable",
-        lambda: called.__setitem__("build_executable", True) or True,
-    )
-    monkeypatch.setattr(
-        manager,
-        "test_executable",
-        lambda: called.__setitem__("test_executable", True) or True,
-    )
-    monkeypatch.setattr(
-        manager.vm,
-        "release",
-        lambda *_args: called.__setitem__("vm_release", True) or "2.0.4",
-    )
+    monkeypatch.setattr(manager, "run_tests", _mark_run_tests)
+    monkeypatch.setattr(manager, "build_executable", _mark_build_executable)
+    monkeypatch.setattr(manager, "test_executable", _mark_test_executable)
+    monkeypatch.setattr(manager.vm, "release", _mark_vm_release)
 
     success = manager.release(auto_push=True)
 
@@ -370,20 +370,20 @@ def test_release_auto_push_threads_new_version_to_push_and_wait(
 
     observed = {"push": None, "wait": None}
 
+    def _record_push(version: str) -> bool:
+        observed["push"] = version
+        return True
+
+    def _record_wait(version: str) -> bool:
+        observed["wait"] = version
+        return True
+
     monkeypatch.setattr(manager, "check_git_status", lambda: True)
     monkeypatch.setattr(manager, "run_tests", lambda: True)
     monkeypatch.setattr(manager, "build_executable", lambda: True)
     monkeypatch.setattr(manager, "test_executable", lambda: True)
-    monkeypatch.setattr(
-        manager,
-        "push_to_github",
-        lambda version: observed.__setitem__("push", version) or True,
-    )
-    monkeypatch.setattr(
-        manager,
-        "wait_for_github_actions",
-        lambda version: observed.__setitem__("wait", version) or True,
-    )
+    monkeypatch.setattr(manager, "push_to_github", _record_push)
+    monkeypatch.setattr(manager, "wait_for_github_actions", _record_wait)
 
     success = manager.release(auto_push=True, message="release note")
 
@@ -407,32 +407,32 @@ def test_release_skip_flags_and_message_propagate_without_auto_push(
         "wait": False,
     }
 
+    def _mark_run_tests() -> bool:
+        called["run_tests"] = True
+        return True
+
+    def _mark_build_executable() -> bool:
+        called["build_executable"] = True
+        return True
+
+    def _mark_test_executable() -> bool:
+        called["test_executable"] = True
+        return True
+
+    def _mark_push(_version: str) -> bool:
+        called["push"] = True
+        return True
+
+    def _mark_wait(_version: str) -> bool:
+        called["wait"] = True
+        return True
+
     monkeypatch.setattr(manager, "check_git_status", lambda: True)
-    monkeypatch.setattr(
-        manager,
-        "run_tests",
-        lambda: called.__setitem__("run_tests", True) or True,
-    )
-    monkeypatch.setattr(
-        manager,
-        "build_executable",
-        lambda: called.__setitem__("build_executable", True) or True,
-    )
-    monkeypatch.setattr(
-        manager,
-        "test_executable",
-        lambda: called.__setitem__("test_executable", True) or True,
-    )
-    monkeypatch.setattr(
-        manager,
-        "push_to_github",
-        lambda _version: called.__setitem__("push", True) or True,
-    )
-    monkeypatch.setattr(
-        manager,
-        "wait_for_github_actions",
-        lambda _version: called.__setitem__("wait", True) or True,
-    )
+    monkeypatch.setattr(manager, "run_tests", _mark_run_tests)
+    monkeypatch.setattr(manager, "build_executable", _mark_build_executable)
+    monkeypatch.setattr(manager, "test_executable", _mark_test_executable)
+    monkeypatch.setattr(manager, "push_to_github", _mark_push)
+    monkeypatch.setattr(manager, "wait_for_github_actions", _mark_wait)
 
     success = manager.release(
         version_type="minor",
@@ -541,6 +541,7 @@ def test_test_executable_runs_version_and_help_smoke_checks(tmp_path: Path) -> N
         [str(exe_file), "--version"],
         [str(exe_file), "--help"],
     ]
+
 
 def test_test_executable_returns_false_when_help_check_fails(tmp_path: Path) -> None:
     dist_dir = tmp_path / "dist"

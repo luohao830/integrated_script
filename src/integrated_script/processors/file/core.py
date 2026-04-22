@@ -358,7 +358,9 @@ class FileProcessor(BaseProcessor):
         try:
             source_path = validate_path(source_dir, must_exist=True, must_be_dir=True)
             target_path = (
-                validate_path(output_dir, must_exist=False) if output_dir else source_path
+                validate_path(output_dir, must_exist=False)
+                if output_dir
+                else source_path
             )
             create_directory(target_path)
 
@@ -388,7 +390,9 @@ class FileProcessor(BaseProcessor):
 
                     target_file = ext_dir / file_path.name
                     if target_file.exists():
-                        target_file = get_unique_filename(target_file.parent, target_file.name)
+                        target_file = get_unique_filename(
+                            target_file.parent, target_file.name
+                        )
 
                     if copy_files:
                         copy_file_safe(file_path, target_file)
@@ -698,9 +702,10 @@ class FileProcessor(BaseProcessor):
                     # 第一阶段失败时，回滚此前已临时改名的文件
                     for mapping in reversed(temp_mappings):
                         try:
-                            if mapping["temp_path"].exists() and not mapping[
-                                "original_path"
-                            ].exists():
+                            if (
+                                mapping["temp_path"].exists()
+                                and not mapping["original_path"].exists()
+                            ):
                                 mapping["temp_path"].rename(mapping["original_path"])
                         except Exception as rollback_error:
                             rollback_errors.append(
@@ -746,7 +751,9 @@ class FileProcessor(BaseProcessor):
 
                     # 确保新文件名唯一
                     if final_path.exists():
-                        final_path = get_unique_filename(final_path.parent, final_path.name)
+                        final_path = get_unique_filename(
+                            final_path.parent, final_path.name
+                        )
 
                     # 最终重命名
                     temp_path.rename(final_path)
@@ -770,9 +777,11 @@ class FileProcessor(BaseProcessor):
                     for done in reversed(finalized_mappings):
                         try:
                             final_done = done.get("final_path")
-                            if final_done and final_done.exists() and not done[
-                                "original_path"
-                            ].exists():
+                            if (
+                                final_done
+                                and final_done.exists()
+                                and not done["original_path"].exists()
+                            ):
                                 final_done.rename(done["original_path"])
                         except Exception as rollback_error:
                             rollback_errors.append(
@@ -788,9 +797,10 @@ class FileProcessor(BaseProcessor):
                     pending_mappings = [mapping] + temp_mappings[index + 1 :]
                     for pending in reversed(pending_mappings):
                         try:
-                            if pending["temp_path"].exists() and not pending[
-                                "original_path"
-                            ].exists():
+                            if (
+                                pending["temp_path"].exists()
+                                and not pending["original_path"].exists()
+                            ):
                                 pending["temp_path"].rename(pending["original_path"])
                         except Exception as rollback_error:
                             rollback_errors.append(
@@ -937,12 +947,20 @@ class FileProcessor(BaseProcessor):
                         label_renamed = True
                     except Exception:
                         # 第一阶段失败时先回滚当前 pair
-                        if img_renamed and temp_img_path.exists() and not img_file.exists():
+                        if (
+                            img_renamed
+                            and temp_img_path.exists()
+                            and not img_file.exists()
+                        ):
                             try:
                                 temp_img_path.rename(img_file)
                             except Exception:
                                 pass
-                        if label_renamed and temp_label_path.exists() and not label_file.exists():
+                        if (
+                            label_renamed
+                            and temp_label_path.exists()
+                            and not label_file.exists()
+                        ):
                             try:
                                 temp_label_path.rename(label_file)
                             except Exception:
@@ -967,7 +985,10 @@ class FileProcessor(BaseProcessor):
                     # 第一阶段失败时，回滚此前所有已进入 temp 的 pair
                     for done in reversed(temp_mappings):
                         try:
-                            if done["temp_img"].exists() and not done["original_img"].exists():
+                            if (
+                                done["temp_img"].exists()
+                                and not done["original_img"].exists()
+                            ):
                                 done["temp_img"].rename(done["original_img"])
                         except Exception as rollback_error:
                             rollback_errors.append(
@@ -980,7 +1001,10 @@ class FileProcessor(BaseProcessor):
                                 }
                             )
                         try:
-                            if done["temp_label"].exists() and not done["original_label"].exists():
+                            if (
+                                done["temp_label"].exists()
+                                and not done["original_label"].exists()
+                            ):
                                 done["temp_label"].rename(done["original_label"])
                         except Exception as rollback_error:
                             rollback_errors.append(
@@ -1112,7 +1136,11 @@ class FileProcessor(BaseProcessor):
                     for done in reversed(finalized_mappings):
                         try:
                             final_img = done.get("final_img")
-                            if final_img and final_img.exists() and not done["original_img"].exists():
+                            if (
+                                final_img
+                                and final_img.exists()
+                                and not done["original_img"].exists()
+                            ):
                                 final_img.rename(done["original_img"])
                         except Exception as rollback_error:
                             rollback_errors.append(
@@ -1126,7 +1154,11 @@ class FileProcessor(BaseProcessor):
                             )
                         try:
                             final_label = done.get("final_label")
-                            if final_label and final_label.exists() and not done["original_label"].exists():
+                            if (
+                                final_label
+                                and final_label.exists()
+                                and not done["original_label"].exists()
+                            ):
                                 final_label.rename(done["original_label"])
                         except Exception as rollback_error:
                             rollback_errors.append(
@@ -1143,7 +1175,10 @@ class FileProcessor(BaseProcessor):
                     pending_mappings = temp_mappings[index + 1 :]
                     for pending in reversed(pending_mappings):
                         try:
-                            if pending["temp_img"].exists() and not pending["original_img"].exists():
+                            if (
+                                pending["temp_img"].exists()
+                                and not pending["original_img"].exists()
+                            ):
                                 pending["temp_img"].rename(pending["original_img"])
                         except Exception as rollback_error:
                             rollback_errors.append(
@@ -1156,7 +1191,10 @@ class FileProcessor(BaseProcessor):
                                 }
                             )
                         try:
-                            if pending["temp_label"].exists() and not pending["original_label"].exists():
+                            if (
+                                pending["temp_label"].exists()
+                                and not pending["original_label"].exists()
+                            ):
                                 pending["temp_label"].rename(pending["original_label"])
                         except Exception as rollback_error:
                             rollback_errors.append(
