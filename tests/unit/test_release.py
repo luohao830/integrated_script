@@ -638,6 +638,7 @@ def test_main_passes_cli_github_api_url_to_release_manager(monkeypatch) -> None:
             skip_build: bool,
             auto_push: bool,
             message,
+            release_overview,
         ) -> bool:
             observed["release_kwargs"] = {
                 "version_type": version_type,
@@ -645,6 +646,7 @@ def test_main_passes_cli_github_api_url_to_release_manager(monkeypatch) -> None:
                 "skip_build": skip_build,
                 "auto_push": auto_push,
                 "message": message,
+                "release_overview": release_overview,
             }
             return True
 
@@ -662,6 +664,8 @@ def test_main_passes_cli_github_api_url_to_release_manager(monkeypatch) -> None:
             "https://api.github.com/repos/acme/demo/actions/runs",
             "-m",
             "p2",
+            "--release-overview",
+            "## 发布概况\n- 变更A",
         ],
     )
 
@@ -676,4 +680,95 @@ def test_main_passes_cli_github_api_url_to_release_manager(monkeypatch) -> None:
         "skip_build": True,
         "auto_push": True,
         "message": "p2",
+        "release_overview": "## 发布概况\n- 变更A",
     }
+
+
+def test_main_reads_release_overview_from_file(tmp_path: Path, monkeypatch) -> None:
+    observed: dict = {}
+    overview_file = tmp_path / "overview.md"
+    overview_file.write_text("## 发布概况\n- 文件输入", encoding="utf-8")
+
+    class _FakeReleaseManager:
+        def __init__(self, **kwargs):
+            observed["init_kwargs"] = kwargs
+
+        def release(
+            self,
+            version_type: str,
+            skip_tests: bool,
+            skip_build: bool,
+            auto_push: bool,
+            message,
+            release_overview,
+        ) -> bool:
+            observed["release_kwargs"] = {
+                "version_type": version_type,
+                "skip_tests": skip_tests,
+                "skip_build": skip_build,
+                "auto_push": auto_push,
+                "message": message,
+                "release_overview": release_overview,
+            }
+            return True
+
+    monkeypatch.setattr(release_module, "ReleaseManager", _FakeReleaseManager)
+    monkeypatch.setattr(
+        release_module.sys,
+        "argv",
+        [
+            "release.py",
+            "patch",
+            "--release-overview-file",
+            str(overview_file),
+        ],
+    )
+
+    release_module.main()
+
+    assert observed["release_kwargs"] == {
+        "version_type": "patch",
+        "skip_tests": False,
+        "skip_build": False,
+        "auto_push": False,
+        "message": None,
+        "release_overview": "## 发布概况\n- 文件输入",
+    }
+
+
+def test_release_appends_overview_markers_to_tag_message(tmp_path: Path, monkeypatch) -> None:
+    executor = _RecordingLocalExecutor([{"stdout": "master\n"}])
+    manager = _build_manager(tmp_path, local_executor=executor)
+    vm = _RecordingVM(version="2.0.4")
+    manager.vm = vm
+
+    monkeypatch.setattr(manager, "check_git_status", lambda: True)
+
+    success = manager.release(
+        version_type="patch",
+        skip_tests=True,
+        skip_build=True,
+        auto_push=False,
+        message="manual",
+        release_overview="## 发布概况\n- 新增A",
+    )
+
+    assert success is True
+    assert vm.calls == [
+        (
+            "patch",
+            "manual\n\n"
+            "<!-- release-overview:start -->\n"
+            "## 发布概况\n- 新增A\n"
+            "<!-- release-overview:end -->",
+        )
+    ]
+
+
+def test_append_release_overview_handles_empty_inputs() -> None:
+    assert release_module.append_release_overview(None, None) is None
+    assert release_module.append_release_overview("base", None) == "base"
+    assert (
+        release_module.append_release_overview(None, "概况")
+        == "<!-- release-overview:start -->\n概况\n<!-- release-overview:end -->"
+    )

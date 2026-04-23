@@ -37,9 +37,9 @@ jobs:
       shell: bash
       run: |
         python - <<'PY'
+        import json
         import os
         import re
-        import json
         import subprocess
         import urllib.request
         from datetime import datetime, timedelta
@@ -47,6 +47,9 @@ jobs:
         tag = os.environ.get("TAG", "").strip()
         repo = os.environ.get("REPO", "").strip()
         token = os.environ.get("GITHUB_TOKEN", "").strip()
+
+        overview_start_marker = "<!-- release-overview:start -->"
+        overview_end_marker = "<!-- release-overview:end -->"
 
         def run(*args: str) -> str:
           return subprocess.check_output(
@@ -87,28 +90,49 @@ jobs:
             return tag_name
           return None
 
+        def extract_release_overview_from_tag(tag_name: str):
+          if not tag_name:
+            return ""
+          try:
+            annotation = run("git", "for-each-ref", f"refs/tags/{tag_name}", "--format=%(contents)")
+          except Exception:
+            return ""
+          if not annotation:
+            return ""
+
+          start_index = annotation.find(overview_start_marker)
+          end_index = annotation.find(overview_end_marker)
+          if start_index < 0 or end_index < 0 or end_index <= start_index:
+            return ""
+
+          content_start = start_index + len(overview_start_marker)
+          return annotation[content_start:end_index].strip()
+
         prev = None
         prev_release = get_prev_release_tag(repo, tag, token)
         if prev_release:
           prev = prev_release
-        if tag:
+
+        try:
+          merged_tags = run(
+            "git",
+            "tag",
+            "--merged",
+            tag,
+            "--list",
+            "v[0-9]*.[0-9]*.[0-9]*",
+            "--sort=version:refname",
+          ).splitlines()
+        except Exception:
+          merged_tags = []
+
+        if not prev and tag and merged_tags:
           try:
-            tags = run(
-              "git",
-              "for-each-ref",
-              "--sort=version:refname",
-              "--format=%(refname:short)",
-              "refs/tags/v[0-9]*.[0-9]*.[0-9]*",
-            ).splitlines()
-          except Exception:
-            tags = []
-          if not prev:
-            try:
-              idx = tags.index(tag)
-            except ValueError:
-              idx = -1
-            if idx > 0:
-              prev = tags[idx - 1]
+            idx = merged_tags.index(tag)
+          except ValueError:
+            idx = -1
+          if idx > 0:
+            prev = merged_tags[idx - 1]
 
         rev_range = f"{prev}..{tag}" if prev else tag
         raw = run(
@@ -165,11 +189,13 @@ jobs:
         def format_section(title: str, items: list[tuple[str, str]]) -> str:
           if not items:
             return ""
-          lines = [f"## {title}", ""]
+          section_lines = [f"## {title}", ""]
           for subject, sha in items:
-            lines.append(f"- {subject} ({sha})")
-          lines.append("")
-          return "\n".join(lines)
+            section_lines.append(f"- {subject} ({sha})")
+          section_lines.append("")
+          return "\n".join(section_lines)
+
+        release_overview = extract_release_overview_from_tag(tag)
 
         body = []
         body.append(f"# {tag}")
@@ -183,6 +209,11 @@ jobs:
         else:
           body.append("对比范围：初始发布")
         body.append("")
+
+        if release_overview:
+          body.append(release_overview)
+          body.append("")
+
         for section in ("新增", "修复", "文档", "CI/构建", "重构", "测试", "其他"):
           part = format_section(section, categories[section])
           if part:
@@ -197,7 +228,6 @@ jobs:
         with open("release_body.md", "w", encoding="utf-8") as f:
           f.write("\n".join(body))
         PY
-
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:

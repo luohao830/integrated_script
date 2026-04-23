@@ -20,6 +20,8 @@ import requests
 from version_manager import VersionManager
 
 GITHUB_ACTIONS_API_URL_ENV = "INTEGRATED_SCRIPT_GITHUB_ACTIONS_API_URL"
+RELEASE_OVERVIEW_START_MARKER = "<!-- release-overview:start -->"
+RELEASE_OVERVIEW_END_MARKER = "<!-- release-overview:end -->"
 
 
 def resolve_github_actions_api_url(explicit_api_url: Optional[str] = None) -> str:
@@ -35,6 +37,26 @@ def resolve_github_actions_api_url(explicit_api_url: Optional[str] = None) -> st
         return env_api_url
 
     return default_api_url
+
+
+def append_release_overview(message: Optional[str], release_overview: Optional[str]) -> Optional[str]:
+    """将发布概况追加到标签消息中（带 marker）"""
+    overview = (release_overview or "").strip()
+    base_message = (message or "").strip()
+
+    if not overview:
+        return base_message or None
+
+    overview_block = (
+        f"{RELEASE_OVERVIEW_START_MARKER}\n"
+        f"{overview}\n"
+        f"{RELEASE_OVERVIEW_END_MARKER}"
+    )
+
+    if not base_message:
+        return overview_block
+
+    return f"{base_message}\n\n{overview_block}"
 
 
 class SubprocessExecutor:
@@ -357,6 +379,7 @@ class ReleaseManager:
         skip_build: bool = False,
         auto_push: bool = False,
         message: Optional[str] = None,
+        release_overview: Optional[str] = None,
     ) -> bool:
         """执行完整的发布流程
 
@@ -366,6 +389,7 @@ class ReleaseManager:
             skip_build: 跳过构建
             auto_push: 自动推送到 GitHub
             message: 发布消息
+            release_overview: 发布概况（将写入 tag 注释，供 release 页面提取）
 
         Returns:
             发布是否成功
@@ -393,8 +417,9 @@ class ReleaseManager:
             return False
 
         # 5. 更新版本并创建标签
+        final_message = append_release_overview(message, release_overview)
         try:
-            new_version = self.vm.release(version_type, message)
+            new_version = self.vm.release(version_type, final_message)
         except Exception as e:
             print(f"❌ 发布失败: 版本发布步骤失败: {e}")
             return False
@@ -572,7 +597,22 @@ def main():
 
     parser.add_argument("-m", "--message", help="发布消息")
 
+    parser.add_argument(
+        "--release-overview",
+        help="发布概况文本，将以 marker 形式写入 tag 注释",
+    )
+
+    parser.add_argument(
+        "--release-overview-file",
+        help="发布概况文件路径，将读取文件内容并写入 tag 注释",
+    )
+
     args = parser.parse_args()
+
+    release_overview = args.release_overview
+    if args.release_overview_file:
+        overview_path = Path(args.release_overview_file)
+        release_overview = overview_path.read_text(encoding="utf-8")
 
     rm = ReleaseManager(github_actions_api_url=args.github_actions_api_url)
 
@@ -583,6 +623,7 @@ def main():
             skip_build=args.skip_build,
             auto_push=args.auto_push,
             message=args.message,
+            release_overview=release_overview,
         )
 
         if not success:
