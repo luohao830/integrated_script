@@ -40,6 +40,8 @@ test-fast:
 	python -m pytest tests/ -x -v
 
 # 代码质量
+PYTHON_PATHS=src/integrated_script tests
+
 lint:
 	flake8 --max-line-length=120 --extend-ignore=E203,W503 src/integrated_script tests/ scripts/
 

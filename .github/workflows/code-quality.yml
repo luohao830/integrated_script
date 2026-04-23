@@ -1,101 +1,34 @@
 name: Code Quality Check
 
-# 触发条件
 on:
   push:
-    branches: [ main, master, develop ]
-  pull_request:
-    branches: [ main, master, develop ]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   code-quality:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.9", "3.10", "3.11"]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    - name: Cache pip dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .[dev]
-        pip install isort  # 确保 isort 已安装
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
 
-    - name: Run Black (code formatting check)
-      run: |
-        black --check --diff src/integrated_script/ scripts/
-
-    - name: Run isort (import sorting check)
-      run: |
-        isort --check-only --diff src/integrated_script/ scripts/
-
-    - name: Run Flake8 (linting)
-      run: |
-        flake8 src/integrated_script/ scripts/
-
-    - name: Run MyPy (type checking)
-      run: |
-        mypy src/integrated_script/
-      continue-on-error: true  # MyPy 错误不会导致构建失败
-
-    - name: Run tests (required gate)
-      run: |
-        pytest -m "not slow" -v
-
-    - name: Run comprehensive code quality check
-      run: |
-        python scripts/format_code.py --check-only
-      continue-on-error: true
-
-  # 自动格式化分支（仅在推送到 main 分支时运行）
-  auto-format:
-    runs-on: ubuntu-latest
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push'
-    needs: code-quality
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install black isort
-
-    - name: Auto-format code
-      run: |
-        black src/integrated_script/ scripts/
-        isort src/integrated_script/ scripts/
-
-    - name: Commit changes
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add -A
-        git diff --staged --quiet || git commit -m "🤖 Auto-format code with Black and isort"
-        git push
-      continue-on-error: true
+      - name: Run quality checks
+        run: make check-all
