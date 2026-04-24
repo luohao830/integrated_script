@@ -2,6 +2,8 @@ name: Code Quality Check
 
 on:
   push:
+    tags-ignore:
+      - 'v*.*.*'
   workflow_dispatch:
 
 jobs:
