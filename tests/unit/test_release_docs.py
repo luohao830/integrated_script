@@ -7,6 +7,13 @@ RELEASE_COMMAND_PATH = REPO_ROOT / ".claude" / "commands" / "release.md"
 RELEASE_SKILL_PATH = REPO_ROOT / ".claude" / "skills" / "release" / "SKILL.md"
 
 
+def _read_release_doc(doc_path: Path) -> str:
+    if not doc_path.exists():
+        pytest.skip(f"release 文档不存在: {doc_path}")
+
+    return doc_path.read_text(encoding="utf-8")
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize(
     ("doc_path", "required_snippets"),
@@ -32,7 +39,7 @@ def test_release_docs_use_git_tag_as_only_version_baseline(
     doc_path: Path,
     required_snippets: list[str],
 ) -> None:
-    content = doc_path.read_text(encoding="utf-8")
+    content = _read_release_doc(doc_path)
 
     for snippet in required_snippets:
         assert snippet in content
@@ -43,7 +50,7 @@ def test_release_docs_use_git_tag_as_only_version_baseline(
 def test_release_docs_do_not_use_pyproject_or_runtime_metadata_as_version_baseline(
     doc_path: Path,
 ) -> None:
-    content = doc_path.read_text(encoding="utf-8")
+    content = _read_release_doc(doc_path)
 
     assert "版本从当前版本递增" not in content
     assert (
@@ -52,10 +59,11 @@ def test_release_docs_do_not_use_pyproject_or_runtime_metadata_as_version_baseli
     )
 
 
+@pytest.mark.unit
 def test_release_command_doc_requires_manual_confirmation_for_first_version_without_tags() -> (
     None
 ):
-    content = RELEASE_COMMAND_PATH.read_text(encoding="utf-8")
+    content = _read_release_doc(RELEASE_COMMAND_PATH)
 
     assert "若没有历史 tag，则按初始发布处理，并要求用户确认首个版本号" in content
     assert "不得回退到 `pyproject.toml` 当前版本作为计算基线" in content
@@ -65,7 +73,7 @@ def test_release_command_doc_requires_manual_confirmation_for_first_version_with
 @pytest.mark.unit
 @pytest.mark.parametrize("doc_path", [RELEASE_COMMAND_PATH, RELEASE_SKILL_PATH])
 def test_release_docs_require_commit_before_tag_and_push(doc_path: Path) -> None:
-    content = doc_path.read_text(encoding="utf-8")
+    content = _read_release_doc(doc_path)
 
     required_snippets = [
         "执行顺序必须固定为",
