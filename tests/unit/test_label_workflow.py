@@ -39,7 +39,11 @@ class _StubLabelProcessor:
             action,
             backup,
         )
-        return {"success": True, "labels_dir": labels_dir, "target_classes": target_classes}
+        return {
+            "success": True,
+            "labels_dir": labels_dir,
+            "target_classes": target_classes,
+        }
 
     def remove_empty_labels_and_images(
         self,
@@ -92,7 +96,11 @@ def test_label_workflow_create_empty_labels_returns_legacy_dict() -> None:
     )
 
     assert result["success"] is True
-    assert processor.calls["create_empty_labels"] == ("/tmp/images", "/tmp/labels", True)
+    assert processor.calls["create_empty_labels"] == (
+        "/tmp/images",
+        "/tmp/labels",
+        True,
+    )
 
 
 def test_label_workflow_flip_labels_returns_legacy_dict() -> None:
@@ -158,7 +166,9 @@ def test_label_workflow_remove_labels_with_only_class_returns_legacy_dict() -> N
     )
 
 
-def test_label_workflow_create_empty_labels_returns_legacy_failure_on_exception() -> None:
+def test_label_workflow_create_empty_labels_returns_legacy_failure_on_exception() -> (
+    None
+):
     class _StubLabelProcessorRaises(_StubLabelProcessor):
         def create_empty_labels(
             self,

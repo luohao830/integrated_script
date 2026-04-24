@@ -4,7 +4,7 @@
 version.py
 
 统一版本读取入口。
-优先从已安装包元数据读取，回退到仓库 pyproject.toml。
+优先从仓库 pyproject.toml 读取，回退到已安装包元数据。
 """
 
 from __future__ import annotations
@@ -54,32 +54,34 @@ def _find_pyproject(start_file: Path) -> Optional[Path]:
 @lru_cache(maxsize=1)
 def get_version() -> str:
     """获取应用版本号。"""
+    pyproject_file = _find_pyproject(Path(__file__))
+    if pyproject_file is not None:
+        content = pyproject_file.read_text(encoding="utf-8")
+        in_project_section = False
+
+        for line in content.splitlines():
+            stripped = line.strip()
+
+            if stripped == "[project]":
+                in_project_section = True
+                continue
+
+            if (
+                in_project_section
+                and stripped.startswith("[")
+                and stripped != "[project]"
+            ):
+                break
+
+            if in_project_section:
+                match = re.match(r"^\s*version\s*=\s*['\"]([^'\"]+)['\"]", line)
+                if match:
+                    return match.group(1)
+
     if package_version is not None:
         try:
             return package_version(_PACKAGE_NAME)
         except PackageNotFound:
             pass
-
-    pyproject_file = _find_pyproject(Path(__file__))
-    if pyproject_file is None:
-        return _DEFAULT_VERSION
-
-    content = pyproject_file.read_text(encoding="utf-8")
-    in_project_section = False
-
-    for line in content.splitlines():
-        stripped = line.strip()
-
-        if stripped == "[project]":
-            in_project_section = True
-            continue
-
-        if in_project_section and stripped.startswith("[") and stripped != "[project]":
-            break
-
-        if in_project_section:
-            match = re.match(r"^\s*version\s*=\s*['\"]([^'\"]+)['\"]", line)
-            if match:
-                return match.group(1)
 
     return _DEFAULT_VERSION

@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RELEASE_COMMAND_PATH = REPO_ROOT / ".claude" / "commands" / "release.md"
 RELEASE_SKILL_PATH = REPO_ROOT / ".claude" / "skills" / "release" / "SKILL.md"
@@ -47,10 +46,15 @@ def test_release_docs_do_not_use_pyproject_or_runtime_metadata_as_version_baseli
     content = doc_path.read_text(encoding="utf-8")
 
     assert "版本从当前版本递增" not in content
-    assert "运行时包元数据" not in content or "而不是 `pyproject.toml` 或运行时包元数据" in content
+    assert (
+        "运行时包元数据" not in content
+        or "而不是 `pyproject.toml` 或运行时包元数据" in content
+    )
 
 
-def test_release_command_doc_requires_manual_confirmation_for_first_version_without_tags() -> None:
+def test_release_command_doc_requires_manual_confirmation_for_first_version_without_tags() -> (
+    None
+):
     content = RELEASE_COMMAND_PATH.read_text(encoding="utf-8")
 
     assert "若没有历史 tag，则按初始发布处理，并要求用户确认首个版本号" in content
@@ -79,7 +83,13 @@ def test_release_docs_require_commit_before_tag_and_push(doc_path: Path) -> None
     for snippet in required_snippets:
         assert snippet in content
 
-    assert content.index("1. 更新 `pyproject.toml` 的 `[project].version`") < content.index("2. 提交版本变更")
+    assert content.index(
+        "1. 更新 `pyproject.toml` 的 `[project].version`"
+    ) < content.index("2. 提交版本变更")
     assert content.index("2. 提交版本变更") < content.index("3. 创建 annotated tag")
-    assert content.index("3. 创建 annotated tag") < content.index("4. `git push origin <current-branch>`")
-    assert content.index("4. `git push origin <current-branch>`") < content.index("5. `git push origin v<next_version>`")
+    assert content.index("3. 创建 annotated tag") < content.index(
+        "4. `git push origin <current-branch>`"
+    )
+    fourth_step = content.index("4. `git push origin <current-branch>`")
+    fifth_step = content.index("5. `git push origin v<next_version>`")
+    assert fourth_step < fifth_step

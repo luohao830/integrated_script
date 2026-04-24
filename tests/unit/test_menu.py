@@ -38,7 +38,9 @@ def test_get_user_choice_raises_user_interrupt_on_eof(monkeypatch) -> None:
         menu._get_user_choice()
 
 
-def test_show_menu_returns_to_parent_when_choice_zero_with_menu_stack(monkeypatch) -> None:
+def test_show_menu_returns_to_parent_when_choice_zero_with_menu_stack(
+    monkeypatch,
+) -> None:
     menu = MenuSystem()
     main_menu = {"title": "main", "options": [("noop", lambda: None)]}
     submenu = {"title": "sub", "options": [("noop", lambda: None)]}

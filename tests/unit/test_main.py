@@ -136,7 +136,9 @@ def test_load_config_from_args_returns_manager_without_custom_path() -> None:
     assert manager is not None
 
 
-def test_load_config_from_args_loads_custom_config_success(monkeypatch, tmp_path: Path) -> None:
+def test_load_config_from_args_loads_custom_config_success(
+    monkeypatch, tmp_path: Path
+) -> None:
     logger = _Logger()
 
     config_path = tmp_path / "custom.json"
@@ -151,7 +153,9 @@ def test_load_config_from_args_loads_custom_config_success(monkeypatch, tmp_path
     assert any("已加载配置文件" in message for message in logger.infos)
 
 
-def test_load_config_from_args_exits_when_config_load_fails(monkeypatch, tmp_path: Path) -> None:
+def test_load_config_from_args_exits_when_config_load_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
     logger = _Logger()
 
     bad_yaml = tmp_path / "bad.yaml"
@@ -306,8 +310,12 @@ def test_main_build_branch_returns_sub_result(monkeypatch) -> None:
 
 
 def test_main_interactive_branch_returns_sub_result(monkeypatch) -> None:
-    monkeypatch.setattr("integrated_script.main.setup_logging_from_args", lambda _args: None)
-    monkeypatch.setattr("integrated_script.main.load_config_from_args", lambda _args: object())
+    monkeypatch.setattr(
+        "integrated_script.main.setup_logging_from_args", lambda _args: None
+    )
+    monkeypatch.setattr(
+        "integrated_script.main.load_config_from_args", lambda _args: object()
+    )
     monkeypatch.setattr("integrated_script.main.run_interactive_mode", lambda _cfg: 0)
 
     result = main([])
@@ -318,14 +326,20 @@ def test_main_interactive_branch_returns_sub_result(monkeypatch) -> None:
 def test_main_returns_one_on_unhandled_exception(monkeypatch) -> None:
     logger = _Logger()
 
-    monkeypatch.setattr("integrated_script.main.setup_logging_from_args", lambda _args: None)
+    monkeypatch.setattr(
+        "integrated_script.main.setup_logging_from_args", lambda _args: None
+    )
     monkeypatch.setattr("integrated_script.main.get_logger", lambda _name: logger)
-    monkeypatch.setattr("integrated_script.main.load_config_from_args", lambda _args: object())
+    monkeypatch.setattr(
+        "integrated_script.main.load_config_from_args", lambda _args: object()
+    )
 
     def _raise_run_interactive(_config):
         raise RuntimeError("unexpected")
 
-    monkeypatch.setattr("integrated_script.main.run_interactive_mode", _raise_run_interactive)
+    monkeypatch.setattr(
+        "integrated_script.main.run_interactive_mode", _raise_run_interactive
+    )
 
     result = main([])
 

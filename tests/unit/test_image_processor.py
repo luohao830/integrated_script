@@ -17,8 +17,12 @@ def _build_processor(tmp_path: Path, monkeypatch) -> ImageProcessor:
 
 
 def test_init_raises_when_no_image_backend(monkeypatch) -> None:
-    monkeypatch.setattr("integrated_script.processors.image_processor.CV2_AVAILABLE", False)
-    monkeypatch.setattr("integrated_script.processors.image_processor.PIL_AVAILABLE", False)
+    monkeypatch.setattr(
+        "integrated_script.processors.image_processor.CV2_AVAILABLE", False
+    )
+    monkeypatch.setattr(
+        "integrated_script.processors.image_processor.PIL_AVAILABLE", False
+    )
 
     with pytest.raises(ProcessingError):
         ImageProcessor()
@@ -56,7 +60,9 @@ def test_convert_format_single_file_returns_stats(tmp_path: Path, monkeypatch) -
     assert output_file.exists()
 
 
-def test_resize_images_single_file_returns_size_change(tmp_path: Path, monkeypatch) -> None:
+def test_resize_images_single_file_returns_size_change(
+    tmp_path: Path, monkeypatch
+) -> None:
     input_file = tmp_path / "input.jpg"
     output_file = tmp_path / "resized.jpg"
     input_file.write_bytes(b"source")
@@ -68,7 +74,9 @@ def test_resize_images_single_file_returns_size_change(tmp_path: Path, monkeypat
     def fake_get_image_size(_path: Path) -> tuple[int, int]:
         return next(sizes)
 
-    def fake_resize(_input: Path, output: Path, _target: tuple[int, int], _keep: bool) -> None:
+    def fake_resize(
+        _input: Path, output: Path, _target: tuple[int, int], _keep: bool
+    ) -> None:
         output.write_bytes(b"resized")
 
     monkeypatch.setattr(processor, "_get_image_size", fake_get_image_size)
@@ -87,7 +95,9 @@ def test_resize_images_single_file_returns_size_change(tmp_path: Path, monkeypat
     assert output_file.exists()
 
 
-def test_compress_images_raises_path_error_when_input_path_invalid(tmp_path: Path, monkeypatch) -> None:
+def test_compress_images_raises_path_error_when_input_path_invalid(
+    tmp_path: Path, monkeypatch
+) -> None:
     processor = _build_processor(tmp_path, monkeypatch)
 
     with pytest.raises(PathError):

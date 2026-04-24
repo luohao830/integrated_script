@@ -89,7 +89,9 @@ def test_validate_yolo_dataset_integrity_flags_invalid_and_empty_labels(
     assert "b.txt" in empty_files
 
 
-def test_validate_yolo_dataset_returns_early_when_labels_missing(tmp_path: Path) -> None:
+def test_validate_yolo_dataset_returns_early_when_labels_missing(
+    tmp_path: Path,
+) -> None:
     dataset = tmp_path / "dataset"
     images = dataset / "images"
     images.mkdir(parents=True)

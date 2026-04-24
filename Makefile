@@ -43,16 +43,19 @@ test-fast:
 PYTHON_PATHS=src/integrated_script tests
 
 lint:
-	flake8 --max-line-length=120 --extend-ignore=E203,W503 src/integrated_script tests/ scripts/
+	flake8 --max-line-length=120 --extend-ignore=E203,W503 src/integrated_script tests/
 
 format:
-	python scripts/format_code.py --format-only
+	python -m black --target-version py310 src tests main.py build_exe.py
+	python -m isort src tests main.py build_exe.py
 
 format-check:
-	python scripts/format_code.py --check-only
+	python -m black --target-version py310 --check src tests main.py build_exe.py
+	python -m isort --check-only src tests main.py build_exe.py
 
 format-all:
-	python scripts/format_code.py
+	python -m black --target-version py310 src tests main.py build_exe.py
+	python -m isort src tests main.py build_exe.py
 
 type-check:
 	mypy src/integrated_script

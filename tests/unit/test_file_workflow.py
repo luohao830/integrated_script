@@ -179,7 +179,9 @@ def test_file_workflow_move_images_by_count_returns_legacy_dict() -> None:
     processor = _StubFileProcessor()
     workflow = FileWorkflow(processor)
 
-    result = workflow.move_images_by_count("/tmp/src", "/tmp/out", count=10, overwrite=True)
+    result = workflow.move_images_by_count(
+        "/tmp/src", "/tmp/out", count=10, overwrite=True
+    )
 
     assert result["success"] is True
     assert processor.calls["move_images_by_count"] == ("/tmp/src", "/tmp/out", 10, True)
@@ -218,7 +220,9 @@ def test_file_workflow_rename_files_with_temp_returns_legacy_dict() -> None:
     processor = _StubFileProcessor()
     workflow = FileWorkflow(processor)
 
-    result = workflow.rename_files_with_temp("/tmp/src", "{index}.jpg", shuffle_order=True)
+    result = workflow.rename_files_with_temp(
+        "/tmp/src", "{index}.jpg", shuffle_order=True
+    )
 
     assert result["success"] is True
     assert processor.calls["rename_files_with_temp"] == (

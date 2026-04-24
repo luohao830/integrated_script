@@ -21,7 +21,9 @@ class _StubYoloProcessor:
         self.last_continue_args: Optional[Tuple[Dict[str, Any], str]] = None
         self.last_continue_kwargs: Dict[str, Any] = {}
 
-    def process_ctds_dataset(self, _dataset_path: str, **_kwargs: Any) -> Dict[str, Any]:
+    def process_ctds_dataset(
+        self, _dataset_path: str, **_kwargs: Any
+    ) -> Dict[str, Any]:
         self.process_called = True
         return self.pre_result
 
@@ -134,8 +136,12 @@ def interface_with_exe(monkeypatch, tmp_path) -> InteractiveInterface:
     return InteractiveInterface(config_manager=config)
 
 
-def test_main_menu_includes_environment_entry_when_not_exe(interface_with_non_exe) -> None:
-    options = [name for name, _ in interface_with_non_exe.menu_system.main_menu["options"]]
+def test_main_menu_includes_environment_entry_when_not_exe(
+    interface_with_non_exe,
+) -> None:
+    options = [
+        name for name, _ in interface_with_non_exe.menu_system.main_menu["options"]
+    ]
 
     assert "环境检查与配置" in options
 
@@ -173,7 +179,9 @@ def test_get_user_confirmed_type_returns_none_when_low_confidence_user_cancels(
 def test_get_user_confirmed_type_returns_detected_type_when_high_confidence_confirmed(
     interface_with_non_exe, monkeypatch
 ) -> None:
-    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: True
+    )
 
     confirmed = interface_with_non_exe._get_user_confirmed_type(
         detected_type="detection", confidence=0.95
@@ -196,8 +204,12 @@ def test_yolo_process_ctds_aborts_when_user_cancels_confirmation(
         "_get_path_input",
         lambda _prompt, must_exist=True: "/tmp/ctds-dataset",
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: processor)
-    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: processor
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: False
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_get_user_confirmed_type",
@@ -226,7 +238,9 @@ def test_yolo_process_ctds_continues_after_user_confirmation(
         "project_name": "demo",
         "statistics": {"final_count": 1},
     }
-    processor = _StubYoloProcessor(pre_result=pre_result, continue_result=continue_result)
+    processor = _StubYoloProcessor(
+        pre_result=pre_result, continue_result=continue_result
+    )
     displayed = {}
 
     monkeypatch.setattr(
@@ -234,8 +248,12 @@ def test_yolo_process_ctds_continues_after_user_confirmation(
         "_get_path_input",
         lambda _prompt, must_exist=True: "/tmp/ctds-dataset",
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: processor)
-    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: processor
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: False
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_get_user_confirmed_type",
@@ -275,8 +293,12 @@ def test_yolo_process_ctds_uses_yolo_workflow_adapter(
         "_get_path_input",
         lambda _prompt, must_exist=True: "/tmp/ctds-dataset",
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
-    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: False
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_get_user_confirmed_type",
@@ -319,7 +341,9 @@ def test_yolo_convert_to_ctds_uses_yolo_workflow_adapter(
         "_get_path_input",
         lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(inputs))
 
@@ -362,7 +386,9 @@ def test_yolo_convert_to_ctds_shows_failure_message_from_workflow(
         "_get_path_input",
         lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(inputs))
     monkeypatch.setattr(
@@ -419,7 +445,9 @@ def test_yolo_convert_to_xlabel_auto_uses_yolo_workflow_adapter(
         "_get_path_input",
         lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda *_a, **_k: "")
     monkeypatch.setattr(
         interface_with_non_exe,
@@ -478,7 +506,9 @@ def test_yolo_process_xlabel_auto_uses_yolo_workflow_adapter(
             output_dir: Optional[str] = None,
             class_order: Optional[List[str]] = None,
         ) -> Dict[str, Any]:
-            self.convert_calls.append((source_dir, output_dir, tuple(class_order or [])))
+            self.convert_calls.append(
+                (source_dir, output_dir, tuple(class_order or []))
+            )
             return {"success": True, "output_path": output_dir or "/tmp/yolo-seg"}
 
     marker_processor = object()
@@ -493,7 +523,9 @@ def test_yolo_process_xlabel_auto_uses_yolo_workflow_adapter(
         "_get_path_input",
         lambda _prompt, must_exist=True: "/tmp/xlabel-dataset",
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda *_a, **_k: "")
     monkeypatch.setattr(
         interface_with_non_exe,
@@ -519,9 +551,7 @@ def test_yolo_process_xlabel_auto_uses_yolo_workflow_adapter(
     assert workflow.processor is marker_processor
     assert workflow.detect_calls == ["/tmp/xlabel-dataset"]
     assert workflow.class_calls == ["/tmp/xlabel-dataset"]
-    assert workflow.convert_calls == [
-        ("/tmp/xlabel-dataset", None, ("cat", "dog"))
-    ]
+    assert workflow.convert_calls == [("/tmp/xlabel-dataset", None, ("cat", "dog"))]
     assert displayed["result"]["success"] is True
 
 
@@ -547,7 +577,9 @@ def test_run_xlabel_conversion_uses_yolo_workflow_adapter(
             output_dir: Optional[str] = None,
             class_order: Optional[List[str]] = None,
         ) -> Dict[str, Any]:
-            self.convert_calls.append((source_dir, output_dir, tuple(class_order or [])))
+            self.convert_calls.append(
+                (source_dir, output_dir, tuple(class_order or []))
+            )
             return {"success": True, "output_path": output_dir or "/tmp/yolo"}
 
     marker_processor = object()
@@ -556,7 +588,9 @@ def test_run_xlabel_conversion_uses_yolo_workflow_adapter(
         "integrated_script.ui.interactive.YoloWorkflow",
         _WorkflowForRun,
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_get_class_order_from_user",
@@ -573,9 +607,7 @@ def test_run_xlabel_conversion_uses_yolo_workflow_adapter(
     workflow = _WorkflowForRun.instances[0]
     assert workflow.processor is marker_processor
     assert workflow.class_calls == ["/tmp/xlabel-dataset"]
-    assert workflow.convert_calls == [
-        ("/tmp/xlabel-dataset", None, ("cat", "dog"))
-    ]
+    assert workflow.convert_calls == [("/tmp/xlabel-dataset", None, ("cat", "dog"))]
     assert result["success"] is True
 
 
@@ -613,7 +645,9 @@ def test_yolo_detection_statistics_uses_yolo_workflow_adapter(
         "_get_path_input",
         lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_display_result",
@@ -664,8 +698,12 @@ def test_yolo_segmentation_statistics_uses_yolo_workflow_adapter(
         "_get_path_input",
         lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
-    monkeypatch.setattr(interface_with_non_exe, "_validate_segmentation_format", lambda _path: [])
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_validate_segmentation_format", lambda _path: []
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_display_result",
@@ -726,7 +764,9 @@ def test_yolo_clean_unmatched_uses_yolo_workflow_adapter(
         "_get_path_input",
         lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(inputs))
 
@@ -755,14 +795,18 @@ def test_yolo_convert_to_xlabel_auto_displays_detection_failure(
     displayed: Dict[str, Any] = {}
     printed: List[str] = []
 
-    monkeypatch.setattr("integrated_script.ui.interactive.YoloWorkflow", _WorkflowDetectFail)
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow", _WorkflowDetectFail
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_get_path_input",
         lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
     )
     monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda *_a, **_k: "")
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: object())
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: object()
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_display_result",
@@ -799,14 +843,18 @@ def test_yolo_process_xlabel_auto_displays_detection_failure(
     displayed: Dict[str, Any] = {}
     printed: List[str] = []
 
-    monkeypatch.setattr("integrated_script.ui.interactive.YoloWorkflow", _WorkflowDetectFail)
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow", _WorkflowDetectFail
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_get_path_input",
         lambda _prompt, must_exist=True: "/tmp/xlabel-dataset",
     )
     monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda *_a, **_k: "")
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: object())
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: object()
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_display_result",
@@ -826,7 +874,9 @@ def test_yolo_process_xlabel_auto_displays_detection_failure(
     assert not any("未检测到有效标注" in line for line in printed)
 
 
-def test_display_result_delegates_to_presenter(interface_with_non_exe, monkeypatch) -> None:
+def test_display_result_delegates_to_presenter(
+    interface_with_non_exe, monkeypatch
+) -> None:
     captured: Dict[str, Any] = {}
 
     monkeypatch.setattr(
@@ -840,7 +890,9 @@ def test_display_result_delegates_to_presenter(interface_with_non_exe, monkeypat
     assert captured["result"] == payload
 
 
-def test_file_copy_uses_file_workflow_adapter(interface_with_non_exe, monkeypatch) -> None:
+def test_file_copy_uses_file_workflow_adapter(
+    interface_with_non_exe, monkeypatch
+) -> None:
     class _WorkflowForFileCopy:
         instances: List["_WorkflowForFileCopy"] = []
 
@@ -864,14 +916,18 @@ def test_file_copy_uses_file_workflow_adapter(interface_with_non_exe, monkeypatc
 
     marker_processor = object()
 
-    monkeypatch.setattr("integrated_script.ui.interactive.FileWorkflow", _WorkflowForFileCopy)
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.FileWorkflow", _WorkflowForFileCopy
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_get_path_input",
-        lambda _prompt, must_exist=True: "/tmp/source.jpg"
-        if "源路径" in _prompt
-        else "/tmp/target",
+        lambda _prompt, must_exist=True: (
+            "/tmp/source.jpg" if "源路径" in _prompt else "/tmp/target"
+        ),
     )
     monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
 
@@ -908,14 +964,18 @@ def test_label_create_empty_uses_label_workflow_adapter(
     monkeypatch.setattr(
         "integrated_script.ui.interactive.LabelWorkflow", _WorkflowForCreateEmpty
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_get_path_input",
         lambda _prompt, must_exist=True, must_be_dir=True: "/tmp/dataset/images",
     )
     monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda *_a, **_k: "")
-    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: False
+    )
     monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
 
     interface_with_non_exe._label_create_empty()
@@ -923,14 +983,18 @@ def test_label_create_empty_uses_label_workflow_adapter(
     assert len(_WorkflowForCreateEmpty.instances) == 1
     workflow = _WorkflowForCreateEmpty.instances[0]
     assert workflow.processor is marker_processor
-    assert workflow.calls == [(
-        "/tmp/dataset/images",
-        str(Path("/tmp/dataset/images").parent / "labels"),
-        False,
-    )]
+    assert workflow.calls == [
+        (
+            "/tmp/dataset/images",
+            str(Path("/tmp/dataset/images").parent / "labels"),
+            False,
+        )
+    ]
 
 
-def test_image_info_uses_image_workflow_adapter(interface_with_non_exe, monkeypatch) -> None:
+def test_image_info_uses_image_workflow_adapter(
+    interface_with_non_exe, monkeypatch
+) -> None:
     class _WorkflowForImageInfo:
         instances: List["_WorkflowForImageInfo"] = []
 
@@ -939,15 +1003,21 @@ def test_image_info_uses_image_workflow_adapter(interface_with_non_exe, monkeypa
             self.calls: List[Tuple[str, bool]] = []
             _WorkflowForImageInfo.instances.append(self)
 
-        def get_image_info(self, image_path: str, recursive: bool = False) -> Dict[str, Any]:
+        def get_image_info(
+            self, image_path: str, recursive: bool = False
+        ) -> Dict[str, Any]:
             self.calls.append((image_path, recursive))
             return {"success": True, "file_path": image_path}
 
     marker_processor = object()
     displayed: Dict[str, Any] = {}
 
-    monkeypatch.setattr("integrated_script.ui.interactive.ImageWorkflow", _WorkflowForImageInfo)
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.ImageWorkflow", _WorkflowForImageInfo
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_get_path_input",
@@ -1004,14 +1074,20 @@ def test_yolo_merge_datasets_uses_yolo_workflow_adapter(
             self.processor = processor
             self.validate_calls: List[List[Path]] = []
             self.generate_calls: List[Tuple[List[str], List[Path]]] = []
-            self.merge_calls: List[Tuple[List[Path], str, Optional[str], Optional[str]]] = []
+            self.merge_calls: List[
+                Tuple[List[Path], str, Optional[str], Optional[str]]
+            ] = []
             _WorkflowForMerge.instances.append(self)
 
-        def validate_classes_consistency(self, dataset_paths: List[Path]) -> Dict[str, Any]:
+        def validate_classes_consistency(
+            self, dataset_paths: List[Path]
+        ) -> Dict[str, Any]:
             self.validate_calls.append(dataset_paths)
             return {"consistent": True, "classes": ["cat", "dog"]}
 
-        def generate_output_name(self, classes: List[str], dataset_paths: List[Path]) -> str:
+        def generate_output_name(
+            self, classes: List[str], dataset_paths: List[Path]
+        ) -> str:
             self.generate_calls.append((classes, dataset_paths))
             return "merged-cat-dog"
 
@@ -1022,7 +1098,9 @@ def test_yolo_merge_datasets_uses_yolo_workflow_adapter(
             output_name: Optional[str] = None,
             image_prefix: Optional[str] = None,
         ) -> Dict[str, Any]:
-            self.merge_calls.append((dataset_paths, output_path, output_name, image_prefix))
+            self.merge_calls.append(
+                (dataset_paths, output_path, output_name, image_prefix)
+            )
             return {
                 "success": True,
                 "output_path": "/tmp/merged",
@@ -1040,8 +1118,12 @@ def test_yolo_merge_datasets_uses_yolo_workflow_adapter(
     marker_processor = object()
     inputs = iter([str(d1), str(d2), "", "", "", "", "y"])
 
-    monkeypatch.setattr("integrated_script.ui.interactive.YoloWorkflow", _WorkflowForMerge)
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow", _WorkflowForMerge
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(inputs))
 
@@ -1067,10 +1149,14 @@ def test_yolo_merge_different_datasets_uses_yolo_workflow_adapter(
             self.collect_calls: List[List[Path]] = []
             self.mapping_calls: List[List[Dict[str, Any]]] = []
             self.generate_calls: List[Tuple[List[str], List[Path]]] = []
-            self.merge_calls: List[Tuple[List[str], str, Optional[str], Optional[str], Optional[List[int]]]] = []
+            self.merge_calls: List[
+                Tuple[List[str], str, Optional[str], Optional[str], Optional[List[int]]]
+            ] = []
             _WorkflowForDiffMerge.instances.append(self)
 
-        def collect_all_classes_info(self, dataset_paths: List[Path]) -> List[Dict[str, Any]]:
+        def collect_all_classes_info(
+            self, dataset_paths: List[Path]
+        ) -> List[Dict[str, Any]]:
             self.collect_calls.append(dataset_paths)
             return [
                 {"dataset_path": dataset_paths[0], "classes": ["cat"]},
@@ -1123,7 +1209,9 @@ def test_yolo_merge_different_datasets_uses_yolo_workflow_adapter(
     monkeypatch.setattr(
         "integrated_script.ui.interactive.YoloWorkflow", _WorkflowForDiffMerge
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(inputs))
 
@@ -1162,7 +1250,11 @@ def test_file_delete_json_recursive_uses_file_workflow_adapter(
                     "target_dir": target_dir,
                     "dry_run": True,
                     "json_files": [str(Path(target_dir) / "a.json")],
-                    "statistics": {"total_files": 1, "deleted_count": 0, "failed_count": 0},
+                    "statistics": {
+                        "total_files": 1,
+                        "deleted_count": 0,
+                        "failed_count": 0,
+                    },
                 }
             return {
                 "success": True,
@@ -1180,13 +1272,17 @@ def test_file_delete_json_recursive_uses_file_workflow_adapter(
     monkeypatch.setattr(
         "integrated_script.ui.interactive.FileWorkflow", _WorkflowForDeleteJson
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_processor", lambda _name: marker_processor)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+    )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_get_path_input",
         lambda _prompt, must_exist=True, must_be_dir=True: str(target_dir),
     )
-    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: True
+    )
     monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
 
     interface_with_non_exe._file_delete_json_recursive()

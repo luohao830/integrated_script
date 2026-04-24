@@ -52,7 +52,9 @@ class _StubImageProcessor:
             "target_size": target_size,
         }
 
-    def get_image_info(self, image_path: str, recursive: bool = False) -> Dict[str, Any]:
+    def get_image_info(
+        self, image_path: str, recursive: bool = False
+    ) -> Dict[str, Any]:
         self.calls["get_image_info"] = (image_path, recursive)
         return {"success": True, "file_path": image_path}
 
@@ -182,7 +184,9 @@ def test_image_workflow_repair_images_with_opencv_returns_legacy_dict() -> None:
     )
 
 
-def test_image_workflow_compress_images_multiprocess_batch_returns_legacy_dict() -> None:
+def test_image_workflow_compress_images_multiprocess_batch_returns_legacy_dict() -> (
+    None
+):
     processor = _StubImageProcessor()
     workflow = ImageWorkflow(processor)
 

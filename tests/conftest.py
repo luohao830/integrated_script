@@ -1,9 +1,8 @@
-from pathlib import Path
 import sys
 import types
+from pathlib import Path
 
 import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_PATH = REPO_ROOT / "src"
@@ -35,7 +34,12 @@ def sample_config_data() -> dict:
     return {
         "version": "1.0.0",
         "paths": {"input_dir": "", "output_dir": ""},
-        "processing": {"batch_size": 16, "max_workers": 2, "timeout": 30, "retry_count": 1},
+        "processing": {
+            "batch_size": 16,
+            "max_workers": 2,
+            "timeout": 30,
+            "retry_count": 1,
+        },
         "ui": {"language": "zh_CN", "theme": "default", "show_progress": True},
         "yolo": {
             "image_formats": [".jpg", ".png"],

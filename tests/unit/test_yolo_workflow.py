@@ -278,7 +278,9 @@ def test_yolo_workflow_convert_yolo_to_ctds_dataset_returns_legacy_dict() -> Non
     assert result["statistics"]["images_copied"] == 1
 
 
-def test_yolo_workflow_convert_yolo_to_ctds_dataset_returns_legacy_failure_on_exception() -> None:
+def test_yolo_workflow_convert_yolo_to_ctds_dataset_returns_legacy_failure_on_exception() -> (
+    None
+):
     class _StubYoloProcessorConvertRaises(_StubYoloProcessor):
         def convert_yolo_to_ctds_dataset(self, dataset_path: str, output_path=None):
             raise RuntimeError(f"convert failed: {dataset_path}, {output_path}")
@@ -317,7 +319,9 @@ def test_yolo_workflow_convert_yolo_to_xlabel_returns_legacy_dict() -> None:
     assert result["output_dir"] == "/tmp/xlabel"
 
 
-def test_yolo_workflow_convert_yolo_to_xlabel_segmentation_returns_legacy_dict() -> None:
+def test_yolo_workflow_convert_yolo_to_xlabel_segmentation_returns_legacy_dict() -> (
+    None
+):
     workflow = YoloWorkflow(_StubYoloProcessor())
 
     result = workflow.convert_yolo_to_xlabel_segmentation(
@@ -348,7 +352,9 @@ def test_yolo_workflow_detect_xlabel_classes_returns_passthrough_set() -> None:
     assert result == {"cat", "dog"}
 
 
-def test_yolo_workflow_detect_xlabel_segmentation_classes_returns_passthrough_set() -> None:
+def test_yolo_workflow_detect_xlabel_segmentation_classes_returns_passthrough_set() -> (
+    None
+):
     workflow = YoloWorkflow(_StubYoloProcessor())
 
     result = workflow.detect_xlabel_segmentation_classes("/tmp/xlabel")
@@ -370,7 +376,9 @@ def test_yolo_workflow_convert_xlabel_to_yolo_returns_legacy_dict() -> None:
     assert result["output_dir"] == "/tmp/yolo-out"
 
 
-def test_yolo_workflow_convert_xlabel_to_yolo_segmentation_returns_legacy_dict() -> None:
+def test_yolo_workflow_convert_xlabel_to_yolo_segmentation_returns_legacy_dict() -> (
+    None
+):
     workflow = YoloWorkflow(_StubYoloProcessor())
 
     result = workflow.convert_xlabel_to_yolo_segmentation(
@@ -449,16 +457,20 @@ def test_yolo_workflow_collect_all_classes_info_returns_passthrough_value() -> N
 def test_yolo_workflow_create_unified_class_mapping_returns_passthrough_value() -> None:
     workflow = YoloWorkflow(_StubYoloProcessor())
 
-    result = workflow.create_unified_class_mapping([
-        {"dataset_path": "/tmp/a", "classes": ["cat"]},
-        {"dataset_path": "/tmp/b", "classes": ["dog"]},
-    ])
+    result = workflow.create_unified_class_mapping(
+        [
+            {"dataset_path": "/tmp/a", "classes": ["cat"]},
+            {"dataset_path": "/tmp/b", "classes": ["dog"]},
+        ]
+    )
 
     assert result[0] == ["cat", "dog"]
     assert result[1] == [{0: 0}, {0: 1}]
 
 
-def test_yolo_workflow_generate_different_output_name_returns_passthrough_string() -> None:
+def test_yolo_workflow_generate_different_output_name_returns_passthrough_string() -> (
+    None
+):
     workflow = YoloWorkflow(_StubYoloProcessor())
 
     result = workflow.generate_different_output_name(
@@ -486,7 +498,9 @@ def test_yolo_workflow_merge_different_type_datasets_returns_legacy_dict() -> No
     assert result["dataset_order"] == [1, 0]
 
 
-def test_yolo_workflow_process_ctds_dataset_returns_legacy_failure_on_exception() -> None:
+def test_yolo_workflow_process_ctds_dataset_returns_legacy_failure_on_exception() -> (
+    None
+):
     workflow = _StubYoloWorkflow(_StubYoloProcessorRaises())
 
     result = workflow.process_ctds_dataset("/tmp/input")

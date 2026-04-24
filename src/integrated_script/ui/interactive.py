@@ -8,6 +8,7 @@ interactive.py
 提供交互式用户界面，支持菜单导航和用户输入。
 """
 
+import importlib
 import os
 import sys
 from pathlib import Path
@@ -3006,12 +3007,11 @@ class InteractiveInterface:
 
             # 3. 检查核心模块（静默）
             try:
-                from ..config.settings import ConfigManager  # noqa: F401
-                from ..processors import (  # noqa: F401
-                    FileProcessor as _FileProcessor,
-                    ImageProcessor as _ImageProcessor,
-                    YOLOProcessor as _YOLOProcessor,
-                )
+                for module_name in (
+                    "integrated_script.config.settings",
+                    "integrated_script.processors",
+                ):
+                    importlib.import_module(module_name)
             except ImportError:
                 pass  # 静默忽略导入错误
 
@@ -3058,7 +3058,7 @@ class InteractiveInterface:
 
             # 检查ConfigManager是否能正常加载
             try:
-                _ = ConfigManager()
+                ConfigManager()
                 print("✓ ConfigManager初始化成功")
             except Exception:
                 pass  # 静默忽略初始化错误
@@ -4253,12 +4253,11 @@ image:
     def _check_core_modules(self) -> bool:
         """检查核心模块"""
         try:
-            from ..config.settings import ConfigManager as _ConfigManager  # noqa: F401
-            from ..processors import (  # noqa: F401
-                FileProcessor as _FileProcessor,
-                ImageProcessor as _ImageProcessor,
-                YOLOProcessor as _YOLOProcessor,
-            )
+            for module_name in (
+                "integrated_script.config.settings",
+                "integrated_script.processors",
+            ):
+                importlib.import_module(module_name)
 
             return True
         except Exception:

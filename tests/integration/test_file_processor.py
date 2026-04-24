@@ -40,7 +40,9 @@ def test_move_images_by_count_moves_requested_number(tmp_path: Path) -> None:
     assert len(list(target.glob("*.jpg"))) == 2
 
 
-def test_rename_files_with_temp_preview_only_does_not_change_files(tmp_path: Path) -> None:
+def test_rename_files_with_temp_preview_only_does_not_change_files(
+    tmp_path: Path,
+) -> None:
     target = tmp_path / "rename"
     target.mkdir(parents=True)
     (target / "a.txt").write_text("a", encoding="utf-8")
@@ -60,7 +62,9 @@ def test_rename_files_with_temp_preview_only_does_not_change_files(tmp_path: Pat
     assert (target / "b.txt").exists()
 
 
-def test_rename_images_labels_sync_keeps_stems_consistent_on_name_conflict(tmp_path: Path) -> None:
+def test_rename_images_labels_sync_keeps_stems_consistent_on_name_conflict(
+    tmp_path: Path,
+) -> None:
     images = tmp_path / "images"
     labels = tmp_path / "labels"
     images.mkdir(parents=True)
