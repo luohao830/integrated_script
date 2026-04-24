@@ -56,3 +56,30 @@ def test_release_command_doc_requires_manual_confirmation_for_first_version_with
     assert "若没有历史 tag，则按初始发布处理，并要求用户确认首个版本号" in content
     assert "不得回退到 `pyproject.toml` 当前版本作为计算基线" in content
     assert "不得回退到 `pyproject.toml` 当前版本作为发布基线" in content
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("doc_path", [RELEASE_COMMAND_PATH, RELEASE_SKILL_PATH])
+def test_release_docs_require_commit_before_tag_and_push(doc_path: Path) -> None:
+    content = doc_path.read_text(encoding="utf-8")
+
+    required_snippets = [
+        "执行顺序必须固定为",
+        "1. 更新 `pyproject.toml` 的 `[project].version`",
+        "2. 提交版本变更",
+        "3. 创建 annotated tag",
+        "4. `git push origin <current-branch>`",
+        "5. `git push origin v<next_version>`",
+        "修改 pyproject.toml 后，必须先提交版本变更，再创建 tag 和执行 push。",
+        "版本更新提交成功之前，不得进入后续发布动作。",
+        "不得在未提交 pyproject.toml 变更前创建 annotated tag。",
+        "不得在未提交版本变更前执行任何 push。",
+    ]
+
+    for snippet in required_snippets:
+        assert snippet in content
+
+    assert content.index("1. 更新 `pyproject.toml` 的 `[project].version`") < content.index("2. 提交版本变更")
+    assert content.index("2. 提交版本变更") < content.index("3. 创建 annotated tag")
+    assert content.index("3. 创建 annotated tag") < content.index("4. `git push origin <current-branch>`")
+    assert content.index("4. `git push origin <current-branch>`") < content.index("5. `git push origin v<next_version>`")
