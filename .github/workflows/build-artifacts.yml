@@ -24,7 +24,7 @@ jobs:
             setup_python: false
             checkout_clean: true
             use_container: true
-            container_image: ghcr.io/luohao091/integrated_script-build:py39
+            container_image: ghcr.io/luohao830/integrated_script-build:py39
             container_python: /opt/venv/bin/python
             container_platform: linux/amd64
             docker_cmd: docker
@@ -39,7 +39,7 @@ jobs:
             setup_python: false
             checkout_clean: false
             use_container: true
-            container_image: ghcr.io/luohao091/integrated_script-build:py39
+            container_image: ghcr.io/luohao830/integrated_script-build:py39
             container_python: /opt/venv/bin/python
             container_platform: linux/arm64
             docker_cmd: sudo docker
