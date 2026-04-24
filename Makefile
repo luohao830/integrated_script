@@ -1,7 +1,7 @@
 # integrated_script Makefile
 # 简化常用开发任务的 Makefile
 
-.PHONY: help install install-dev test test-cov lint format type-check clean build upload docs serve-docs
+.PHONY: help install install-dev test test-cov lint format type-check clean build upload docs serve-docs install-hooks
 
 # 默认目标
 help:
@@ -105,8 +105,12 @@ run-cli-help:
 	python main.py --help
 
 # 开发环境设置
-setup-dev: install-dev
-	pre-commit install
+setup-dev: install-dev install-hooks
+
+install-hooks:
+	@hook_path="$$(git rev-parse --git-path hooks/pre-push)"; \
+	cp .githooks/pre-push "$$hook_path"; \
+	chmod +x "$$hook_path"
 
 # 版本管理
 bump-patch:

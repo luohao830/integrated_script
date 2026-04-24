@@ -7,7 +7,9 @@ CODE_QUALITY_WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "code-quality
 
 
 @pytest.mark.unit
-def test_code_quality_workflow_keeps_branch_pushes_while_ignoring_release_tags() -> None:
+def test_code_quality_workflow_keeps_branch_pushes_while_ignoring_release_tags() -> (
+    None
+):
     content = CODE_QUALITY_WORKFLOW_PATH.read_text(encoding="utf-8")
 
     required_snippets = [
