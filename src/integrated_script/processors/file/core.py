@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, cast
 
 from ...config.exceptions import ProcessingError
 from ...core.base import BaseProcessor
-from ...core.progress import process_with_progress
+from ...core.progress import process_with_progress, progress_context
 from ...core.utils import (
     copy_file_safe,
     create_directory,
@@ -544,28 +544,37 @@ class FileProcessor(BaseProcessor):
                 },
             }
 
-            if count == 9999:
-                count = len(ordered_images)
+            target_move_count = count
+            if target_move_count == 9999:
+                target_move_count = len(ordered_images)
 
+            show_progress = self.get_config("ui.show_progress", True)
             moved = 0
-            for image_path in ordered_images:
-                if moved >= count:
-                    break
-                try:
-                    target_file = target_path / image_path.name
-                    if target_file.exists() and not overwrite:
-                        target_file = get_unique_filename(
-                            target_file.parent, target_file.name
-                        )
+            with progress_context(
+                target_move_count,
+                "按数量移动图片",
+                show_progress=show_progress,
+                unit="img",
+            ) as progress:
+                for image_path in ordered_images:
+                    if moved >= target_move_count:
+                        break
+                    try:
+                        target_file = target_path / image_path.name
+                        if target_file.exists() and not overwrite:
+                            target_file = get_unique_filename(
+                                target_file.parent, target_file.name
+                            )
 
-                    move_file_safe(image_path, target_file)
-                    result["moved_files"].append(str(target_file))
-                    moved += 1
-                except Exception as e:
-                    result["failed_files"].append(
-                        {"source_file": str(image_path), "error": str(e)}
-                    )
-                    result["statistics"]["failed_count"] += 1
+                        move_file_safe(image_path, target_file)
+                        result["moved_files"].append(str(target_file))
+                        moved += 1
+                        progress.update_progress(1)
+                    except Exception as e:
+                        result["failed_files"].append(
+                            {"source_file": str(image_path), "error": str(e)}
+                        )
+                        result["statistics"]["failed_count"] += 1
 
             result["statistics"]["moved_count"] = moved
             return result

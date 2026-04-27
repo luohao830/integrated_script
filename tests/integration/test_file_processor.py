@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from pathlib import Path
 
 from integrated_script.processors.file_processor import FileProcessor
@@ -38,6 +39,169 @@ def test_move_images_by_count_moves_requested_number(tmp_path: Path) -> None:
     assert result["success"] is True
     assert result["statistics"]["moved_count"] == 2
     assert len(list(target.glob("*.jpg"))) == 2
+
+
+def test_move_images_by_count_reports_progress_by_requested_move_count(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "images"
+    source.mkdir(parents=True)
+    for name in ["001.jpg", "002.jpg", "003.jpg"]:
+        (source / name).write_text("img", encoding="utf-8")
+
+    target = tmp_path / "moved"
+    processor = FileProcessor()
+    captured: dict[str, object] = {}
+    updates: list[int] = []
+
+    @contextmanager
+    def _fake_progress_context(total, description, show_progress=True, **_kwargs):
+        captured["total"] = total
+        captured["description"] = description
+        captured["show_progress"] = show_progress
+
+        class _Manager:
+            def update_progress(self, n=1, description=None):
+                del description
+                updates.append(n)
+
+        yield _Manager()
+
+    monkeypatch.setattr(
+        "integrated_script.processors.file.core.progress_context",
+        _fake_progress_context,
+    )
+
+    result = processor.move_images_by_count(str(source), str(target), count=2)
+
+    assert result["success"] is True
+    assert captured == {
+        "total": 2,
+        "description": "按数量移动图片",
+        "show_progress": True,
+    }
+    assert updates == [1, 1]
+
+
+def test_move_images_by_count_translates_9999_to_all_candidates_for_progress(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "images"
+    source.mkdir(parents=True)
+    for name in ["001.jpg", "002.jpg", "003.jpg"]:
+        (source / name).write_text("img", encoding="utf-8")
+
+    target = tmp_path / "moved"
+    processor = FileProcessor()
+    captured_totals: list[int] = []
+    updates: list[int] = []
+
+    @contextmanager
+    def _fake_progress_context(total, description, show_progress=True, **_kwargs):
+        del description, show_progress
+        captured_totals.append(total)
+
+        class _Manager:
+            def update_progress(self, n=1, description=None):
+                del description
+                updates.append(n)
+
+        yield _Manager()
+
+    monkeypatch.setattr(
+        "integrated_script.processors.file.core.progress_context",
+        _fake_progress_context,
+    )
+
+    result = processor.move_images_by_count(str(source), str(target), count=9999)
+
+    assert result["success"] is True
+    assert result["statistics"]["moved_count"] == 3
+    assert captured_totals == [3]
+    assert updates == [1, 1, 1]
+
+
+def test_move_images_by_count_does_not_advance_progress_on_failed_move(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "images"
+    source.mkdir(parents=True)
+    for name in ["001.jpg", "002.jpg", "003.jpg"]:
+        (source / name).write_text("img", encoding="utf-8")
+
+    target = tmp_path / "moved"
+    processor = FileProcessor()
+    updates: list[int] = []
+
+    @contextmanager
+    def _fake_progress_context(total, description, show_progress=True, **_kwargs):
+        del total, description, show_progress
+
+        class _Manager:
+            def update_progress(self, n=1, description=None):
+                del description
+                updates.append(n)
+
+        yield _Manager()
+
+    def _fake_move_file_safe(source_path, target_path):
+        if Path(source_path).name == "001.jpg":
+            raise OSError("inject-move-failure")
+        Path(target_path).write_text(Path(source_path).read_text(encoding="utf-8"))
+        Path(source_path).unlink()
+
+    monkeypatch.setattr(
+        "integrated_script.processors.file.core.progress_context",
+        _fake_progress_context,
+    )
+    monkeypatch.setattr(
+        "integrated_script.processors.file.core.move_file_safe",
+        _fake_move_file_safe,
+    )
+
+    result = processor.move_images_by_count(str(source), str(target), count=2)
+
+    assert result["success"] is True
+    assert result["statistics"]["moved_count"] == 2
+    assert result["statistics"]["failed_count"] == 1
+    assert len(result["failed_files"]) == 1
+    assert updates == [1, 1]
+
+
+def test_move_images_by_count_respects_ui_show_progress_false(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "images"
+    source.mkdir(parents=True)
+    for name in ["001.jpg", "002.jpg"]:
+        (source / name).write_text("img", encoding="utf-8")
+
+    target = tmp_path / "moved"
+    processor = FileProcessor()
+    captured_show_progress: list[bool] = []
+
+    @contextmanager
+    def _fake_progress_context(total, description, show_progress=True, **_kwargs):
+        del total, description
+        captured_show_progress.append(show_progress)
+
+        class _Manager:
+            def update_progress(self, n=1, description=None):
+                del n, description
+                return None
+
+        yield _Manager()
+
+    monkeypatch.setattr(
+        "integrated_script.processors.file.core.progress_context",
+        _fake_progress_context,
+    )
+    monkeypatch.setattr(processor, "get_config", lambda key, default=None: False)
+
+    result = processor.move_images_by_count(str(source), str(target), count=1)
+
+    assert result["success"] is True
+    assert captured_show_progress == [False]
 
 
 def test_rename_files_with_temp_preview_only_does_not_change_files(
