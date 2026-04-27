@@ -385,6 +385,80 @@ def test_merge_datasets_output_name_generation_and_merge_reuse_scanned_files(
     assert {id(files) for files in scanned_manifest} == set(used_manifest_ids)
 
 
+def test_continue_ctds_processing_reports_out_of_bounds_and_missing_file_stats(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "ctds-invalid"
+    obj_train_data = source / "obj_train_data"
+    obj_train_data.mkdir(parents=True)
+
+    (source / "obj.names").write_text("car\n", encoding="utf-8")
+    (obj_train_data / "valid.txt").write_text(
+        "0 0.5 0.5 0.2 0.2\n", encoding="utf-8"
+    )
+    (obj_train_data / "valid.jpg").write_text("img", encoding="utf-8")
+    (obj_train_data / "out_of_bounds.txt").write_text(
+        "0 1.2 0.5 0.2 0.2\n", encoding="utf-8"
+    )
+    (obj_train_data / "out_of_bounds.jpg").write_text("img", encoding="utf-8")
+    (obj_train_data / "missing_image.txt").write_text(
+        "0 0.4 0.4 0.2 0.2\n", encoding="utf-8"
+    )
+    (obj_train_data / "image_only.jpg").write_text("img", encoding="utf-8")
+
+    processor = _build_processor(tmp_path)
+    pre_result = processor.process_ctds_dataset(str(source), output_name="demo")
+    result = processor.continue_ctds_processing(pre_result, confirmed_type="detection")
+
+    output_path = Path(result["output_path"])
+    stats = result["statistics"]
+    invalid_details = result["invalid_details"]
+
+    assert result["success"] is True
+    assert stats["total_processed"] == 4
+    assert stats["final_count"] == 1
+    assert stats["invalid_removed"] == 3
+    assert stats["out_of_bounds_labels"] == 1
+    assert stats["missing_images"] == 1
+    assert stats["missing_labels"] == 1
+    assert {Path(path).name for path in invalid_details["out_of_bounds_labels"]} == {
+        "out_of_bounds.txt"
+    }
+    assert {Path(path).name for path in invalid_details["missing_images"]} == {
+        "missing_image.txt"
+    }
+    assert {Path(path).name for path in invalid_details["missing_labels"]} == {
+        "image_only.jpg"
+    }
+    assert output_path.exists()
+    assert len(list((output_path / "images").glob("*.jpg"))) == 1
+    assert len(list((output_path / "labels").glob("*.txt"))) == 1
+
+
+def test_continue_ctds_processing_does_not_count_malformed_label_as_out_of_bounds(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "ctds-malformed"
+    obj_train_data = source / "obj_train_data"
+    obj_train_data.mkdir(parents=True)
+
+    (source / "obj.names").write_text("car\n", encoding="utf-8")
+    (obj_train_data / "bad_format.txt").write_text("0 0.5 0.5 0.2\n", encoding="utf-8")
+    (obj_train_data / "bad_format.jpg").write_text("img", encoding="utf-8")
+
+    processor = _build_processor(tmp_path)
+    pre_result = processor.process_ctds_dataset(str(source), output_name="demo")
+    result = processor.continue_ctds_processing(pre_result, confirmed_type="detection")
+
+    assert result["success"] is True
+    assert result["statistics"]["invalid_removed"] == 1
+    assert result["statistics"]["out_of_bounds_labels"] == 0
+    assert result["invalid_details"]["out_of_bounds_labels"] == []
+    assert {Path(path).name for path in result["invalid_details"]["invalid_labels"]} == {
+        "bad_format.txt"
+    }
+
+
 def test_ctds_processing_reads_each_label_file_once_when_dropping_empty_labels(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

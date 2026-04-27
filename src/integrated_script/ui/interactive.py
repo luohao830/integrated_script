@@ -406,7 +406,12 @@ class InteractiveInterface:
             print(f"  - 总处理文件数: {stats.get('total_processed', 0)}")
             print(f"  - 有效文件数: {stats.get('final_count', 0)}")
             print(f"  - 无效文件数: {stats.get('invalid_removed', 0)}")
-            if "missing_images" in stats or "missing_labels" in stats:
+            if (
+                "out_of_bounds_labels" in stats
+                or "missing_images" in stats
+                or "missing_labels" in stats
+            ):
+                print(f"  - 标签越界数: {stats.get('out_of_bounds_labels', 0)}")
                 print(f"  - 标签缺图数: {stats.get('missing_images', 0)}")
                 print(f"  - 图片缺标数: {stats.get('missing_labels', 0)}")
         else:

@@ -776,7 +776,7 @@ class YOLOProcessor(DatasetProcessor):
         """单次读取并校验 CTDS 标签文件。
 
         Returns:
-            str: "empty" | "valid" | "invalid"
+            str: "empty" | "valid" | "invalid" | "out_of_bounds"
         """
         try:
             with open(label_file, "r", encoding="utf-8") as file:
@@ -847,13 +847,13 @@ class YOLOProcessor(DatasetProcessor):
                         f"文件 {label_file} 中存在负数坐标: {stripped_line} "
                         f"(第{index+2}列: {coord})"
                     )
-                    return "invalid"
+                    return "out_of_bounds"
                 if coord > 1.0:
                     self.logger.debug(
                         f"文件 {label_file} 中坐标超出范围[0,1]: {stripped_line} "
                         f"(第{index+2}列: {coord})"
                     )
-                    return "invalid"
+                    return "out_of_bounds"
 
         if not has_non_empty_line:
             return "empty"
@@ -864,7 +864,10 @@ class YOLOProcessor(DatasetProcessor):
         self, label_file: Path, dataset_type: str = "detection"
     ) -> bool:
         """兼容旧入口：判断标签是否包含无效数据。"""
-        return self._validate_ctds_label_file(label_file, dataset_type) == "invalid"
+        return self._validate_ctds_label_file(label_file, dataset_type) in {
+            "invalid",
+            "out_of_bounds",
+        }
 
     def _is_empty_label_file(self, label_file: Path) -> bool:
         """兼容旧入口：判断标签是否为空（或仅包含空行）。"""
