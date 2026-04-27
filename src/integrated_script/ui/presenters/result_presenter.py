@@ -19,6 +19,7 @@ def render_result(result: Dict[str, Any]) -> None:
         "class_names": "类别名称",
         "total_processed": "总处理文件数",
         "invalid_removed": "无效文件数",
+        "out_of_bounds_labels": "标签越界数",
         "final_count": "有效文件数",
         "input_path": "输入路径",
         "output_path": "输出路径",

@@ -326,6 +326,37 @@ def test_yolo_process_ctds_uses_yolo_workflow_adapter(
     assert displayed["result"]["project_name"] == "demo"
 
 
+def test_display_ctds_result_shows_out_of_bounds_stats(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    printed: List[str] = []
+
+    monkeypatch.setattr(
+        "builtins.print",
+        lambda *args, **_kwargs: printed.append(" ".join(str(arg) for arg in args)),
+    )
+
+    interface_with_non_exe._display_ctds_result(
+        {
+            "success": True,
+            "output_path": "/tmp/output",
+            "project_name": "demo",
+            "statistics": {
+                "total_processed": 4,
+                "final_count": 1,
+                "invalid_removed": 3,
+                "out_of_bounds_labels": 1,
+                "missing_images": 1,
+                "missing_labels": 1,
+            },
+        }
+    )
+
+    assert any("标签越界数: 1" in line for line in printed)
+    assert any("标签缺图数: 1" in line for line in printed)
+    assert any("图片缺标数: 1" in line for line in printed)
+
+
 def test_yolo_convert_to_ctds_uses_yolo_workflow_adapter(
     interface_with_non_exe, monkeypatch
 ) -> None:

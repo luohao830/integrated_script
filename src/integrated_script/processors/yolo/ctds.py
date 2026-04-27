@@ -165,6 +165,7 @@ def execute_ctds_processing_internal(
             "invalid_details": {
                 "empty_labels": [],
                 "invalid_labels": [],
+                "out_of_bounds_labels": [],
                 "missing_images": [],
                 "missing_labels": [],
             },
@@ -173,6 +174,7 @@ def execute_ctds_processing_internal(
                 "invalid_removed": 0,
                 "final_count": 0,
                 "empty_removed": 0,
+                "out_of_bounds_labels": 0,
                 "missing_images": 0,
                 "missing_labels": 0,
             },
@@ -189,6 +191,9 @@ def execute_ctds_processing_internal(
         processed_labels: List[str] = cast(List[str], processed_files["labels"])
         empty_labels: List[str] = cast(List[str], invalid_details["empty_labels"])
         invalid_labels: List[str] = cast(List[str], invalid_details["invalid_labels"])
+        out_of_bounds_labels: List[str] = cast(
+            List[str], invalid_details["out_of_bounds_labels"]
+        )
         missing_images: List[str] = cast(List[str], invalid_details["missing_images"])
         missing_labels: List[str] = cast(List[str], invalid_details["missing_labels"])
         hard_error = False
@@ -227,6 +232,15 @@ def execute_ctds_processing_internal(
                         statistics["empty_removed"] += 1
                         invalid_files.append(str(txt_file))
                         empty_labels.append(str(txt_file))
+                        progress.update_progress(1)
+                        continue
+
+                    if validation_status == "out_of_bounds":
+                        invalid_count += 1
+                        statistics["out_of_bounds_labels"] += 1
+                        invalid_files.append(str(txt_file))
+                        invalid_labels.append(str(txt_file))
+                        out_of_bounds_labels.append(str(txt_file))
                         progress.update_progress(1)
                         continue
 
@@ -280,8 +294,13 @@ def execute_ctds_processing_internal(
             invalid_files.extend(str(f) for f in unmatched_images)
             missing_labels.extend(str(f) for f in unmatched_images)
 
+        statistics["invalid_removed"] = invalid_count + statistics["missing_labels"]
+        statistics["total_processed"] = (
+            statistics["final_count"] + statistics["invalid_removed"]
+        )
+
         processor.logger.info(
-            f"CTDS数据处理完成 - 总文件数: {total_files}, 有效文件: {valid_files}, 无效文件: {invalid_count}"
+            f"CTDS数据处理完成 - 总文件数: {statistics['total_processed']}, 有效文件: {valid_files}, 无效文件: {statistics['invalid_removed']}"
         )
         if statistics["missing_images"] > 0:
             processor.logger.warning(
@@ -341,9 +360,9 @@ def execute_ctds_processing_internal(
                 processor.logger.error(f"重命名项目文件夹失败: {str(e)}")
                 hard_error = True
 
-        statistics["total_processed"] = len(txt_files)
-        statistics["invalid_removed"] = invalid_count
+        statistics["invalid_removed"] = invalid_count + statistics["missing_labels"]
         statistics["final_count"] = final_count
+        statistics["total_processed"] = final_count + statistics["invalid_removed"]
 
         result["detected_dataset_type"] = confirmed_type
         result["detection_confidence"] = pre_detection_result.get("confidence", 1.0)
