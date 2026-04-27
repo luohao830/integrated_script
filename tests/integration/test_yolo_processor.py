@@ -393,9 +393,7 @@ def test_continue_ctds_processing_reports_out_of_bounds_and_missing_file_stats(
     obj_train_data.mkdir(parents=True)
 
     (source / "obj.names").write_text("car\n", encoding="utf-8")
-    (obj_train_data / "valid.txt").write_text(
-        "0 0.5 0.5 0.2 0.2\n", encoding="utf-8"
-    )
+    (obj_train_data / "valid.txt").write_text("0 0.5 0.5 0.2 0.2\n", encoding="utf-8")
     (obj_train_data / "valid.jpg").write_text("img", encoding="utf-8")
     (obj_train_data / "out_of_bounds.txt").write_text(
         "0 1.2 0.5 0.2 0.2\n", encoding="utf-8"
@@ -454,9 +452,9 @@ def test_continue_ctds_processing_does_not_count_malformed_label_as_out_of_bound
     assert result["statistics"]["invalid_removed"] == 1
     assert result["statistics"]["out_of_bounds_labels"] == 0
     assert result["invalid_details"]["out_of_bounds_labels"] == []
-    assert {Path(path).name for path in result["invalid_details"]["invalid_labels"]} == {
-        "bad_format.txt"
-    }
+    assert {
+        Path(path).name for path in result["invalid_details"]["invalid_labels"]
+    } == {"bad_format.txt"}
 
 
 def test_ctds_processing_reads_each_label_file_once_when_dropping_empty_labels(
