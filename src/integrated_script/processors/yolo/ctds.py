@@ -300,7 +300,10 @@ def execute_ctds_processing_internal(
         )
 
         processor.logger.info(
-            f"CTDS数据处理完成 - 总文件数: {statistics['total_processed']}, 有效文件: {valid_files}, 无效文件: {statistics['invalid_removed']}"
+            (
+                f"CTDS数据处理完成 - 总文件数: {statistics['total_processed']}, "
+                f"有效文件: {valid_files}, 无效文件: {statistics['invalid_removed']}"
+            )
         )
         if statistics["missing_images"] > 0:
             processor.logger.warning(
