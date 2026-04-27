@@ -98,3 +98,34 @@ def test_filter_labels_by_class_keeps_invalid_class_line_as_is(tmp_path: Path) -
     lines = label_file.read_text(encoding="utf-8").splitlines()
     assert lines[0] == "x 0.5 0.5 0.1 0.1"
     assert lines[1].startswith("1 ")
+
+
+def test_remove_labels_with_only_class_excludes_classes_txt_from_statistics(
+    tmp_path: Path,
+) -> None:
+    dataset = tmp_path / "dataset"
+    images = dataset / "images"
+    labels = dataset / "labels"
+    images.mkdir(parents=True)
+    labels.mkdir(parents=True)
+
+    (images / "a.jpg").write_text("img", encoding="utf-8")
+    (labels / "a.txt").write_text("1 0.5 0.5 0.1 0.1\n", encoding="utf-8")
+    (labels / "classes.txt").write_text("class-a\n", encoding="utf-8")
+
+    processor = LabelProcessor()
+    result = processor.remove_labels_with_only_class(str(dataset), target_class=1)
+
+    assert result["success"] is True
+    assert result["statistics"]["total_labels"] == 1
+    assert result["statistics"]["target_class_only_labels"] == 1
+    assert result["statistics"]["removed_labels"] == 1
+    assert result["statistics"]["removed_images"] == 1
+    assert result["statistics"]["failed_count"] == 0
+    assert (labels / "classes.txt").exists()
+    assert not (labels / "a.txt").exists()
+    assert not (images / "a.jpg").exists()
+    assert all(
+        Path(pair["label_file"]).name != "classes.txt"
+        for pair in result["removed_pairs"]
+    )

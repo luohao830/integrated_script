@@ -586,7 +586,11 @@ class LabelProcessor(BaseProcessor):
             )
 
             # 获取标签文件
-            label_files = get_file_list(labels_path, [".txt"], recursive=False)
+            label_files = [
+                label_file
+                for label_file in get_file_list(labels_path, [".txt"], recursive=False)
+                if label_file.name != "classes.txt"
+            ]
 
             result: Dict[str, Any] = {
                 "success": True,
