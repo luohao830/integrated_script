@@ -27,6 +27,10 @@ from ..workflows import FileWorkflow, ImageWorkflow, LabelWorkflow, YoloWorkflow
 from .menu import MenuSystem
 from .presenters import render_result
 
+YES_VALUES = {"y", "yes", "是", "1", "true"}
+NO_VALUES = {"n", "no", "否", "0", "false"}
+LEGACY_PROMPT_MARKERS = ("(Y/n)", "(y/N)", "(y/n)", "默认:")
+
 
 class InteractiveInterface:
     """交互式界面
@@ -156,7 +160,7 @@ class InteractiveInterface:
                 project_name = None
 
             keep_empty_labels = self._get_yes_no_input(
-                "\n是否保留空标签文件? (y/N): ", default=False
+                "\n是否保留空标签文件?", default=False
             )
 
             processor = self._get_processor("yolo")
@@ -541,9 +545,11 @@ class InteractiveInterface:
 
                 if has_issues:
                     print("\n⚠ 验证发现数据集存在不匹配文件问题")
-                    auto_clean = input("是否立即进行自动清理？(Y/n): ").strip().lower()
+                    auto_clean = self._get_yes_no_input(
+                        "是否立即进行自动清理？", default=True
+                    )
 
-                    if auto_clean in ["", "y", "yes", "是"]:
+                    if auto_clean:
                         print("\n开始自动清理...")
 
                         # 先进行试运行
@@ -586,10 +592,10 @@ class InteractiveInterface:
                             self._display_files_to_delete(clean_result["deleted_files"])
 
                             # 确认删除
-                            confirm = (
-                                input("\n确认删除这些文件？(Y/n): ").strip().lower()
+                            confirm = self._get_yes_no_input(
+                                "\n确认删除这些文件？", default=True
                             )
-                            if confirm in ["", "y", "yes", "是"]:
+                            if confirm:
                                 print("\n正在删除文件...")
                                 final_result = workflow.clean_unmatched_files(
                                     dataset_path, dry_run=False
@@ -657,10 +663,10 @@ class InteractiveInterface:
                     print(f"  ... 还有 {len(invalid_files) - 5} 个文件")
 
                 # 询问是否移动无效文件
-                move_choice = (
-                    input("\n是否将无效文件移动到上级目录？(Y/n): ").strip().lower()
+                move_choice = self._get_yes_no_input(
+                    "\n是否将无效文件移动到上级目录？", default=True
                 )
-                if move_choice in ["", "y", "yes", "是"]:
+                if move_choice:
                     self._move_invalid_segmentation_files(dataset_path, invalid_files)
                 else:
                     print("\n跳过文件移动")
@@ -679,9 +685,11 @@ class InteractiveInterface:
 
                 if has_issues:
                     print("\n⚠ 验证发现数据集存在不匹配文件问题")
-                    auto_clean = input("是否立即进行自动清理？(Y/n): ").strip().lower()
+                    auto_clean = self._get_yes_no_input(
+                        "是否立即进行自动清理？", default=True
+                    )
 
-                    if auto_clean in ["", "y", "yes", "是"]:
+                    if auto_clean:
                         print("\n开始自动清理...")
 
                         # 先进行试运行
@@ -724,10 +732,10 @@ class InteractiveInterface:
                             self._display_files_to_delete(clean_result["deleted_files"])
 
                             # 确认删除
-                            confirm = (
-                                input("\n确认删除这些文件？(Y/n): ").strip().lower()
+                            confirm = self._get_yes_no_input(
+                                "\n确认删除这些文件？", default=True
                             )
-                            if confirm in ["", "y", "yes", "是"]:
+                            if confirm:
                                 print("\n正在删除文件...")
                                 final_result = workflow.clean_unmatched_files(
                                     dataset_path, dry_run=False
@@ -893,12 +901,9 @@ class InteractiveInterface:
             dataset_path = self._get_path_input("请输入数据集路径: ", must_exist=True)
 
             # 询问是否先进行试运行
-            dry_run_choice = (
-                input("\n是否先进行试运行（查看将要删除的文件但不实际删除）？(y/N): ")
-                .strip()
-                .lower()
+            dry_run = self._get_yes_no_input(
+                "\n是否先进行试运行（查看将要删除的文件但不实际删除）？", default=False
             )
-            dry_run = dry_run_choice in ["y", "yes", "是"]
 
             processor = self._get_processor("yolo")
             workflow = YoloWorkflow(processor)
@@ -970,8 +975,10 @@ class InteractiveInterface:
                             )
 
                     # 询问是否继续实际删除
-                    confirm = input("\n确认要删除这些文件吗？(y/N): ").strip().lower()
-                    if confirm in ["y", "yes", "是"]:
+                    confirm = self._get_yes_no_input(
+                        "\n确认要删除这些文件吗？", default=False
+                    )
+                    if confirm:
                         print("\n正在删除文件...")
                         result = workflow.clean_unmatched_files(
                             dataset_path, dry_run=False
@@ -981,10 +988,10 @@ class InteractiveInterface:
                         print("\n操作已取消")
             else:
                 # 直接删除，但先确认
-                confirm = (
-                    input("\n确认要直接删除不匹配的文件吗？(y/N): ").strip().lower()
+                confirm = self._get_yes_no_input(
+                    "\n确认要直接删除不匹配的文件吗？", default=False
                 )
-                if confirm in ["y", "yes", "是"]:
+                if confirm:
                     print("\n正在清理文件...")
                     result = workflow.clean_unmatched_files(dataset_path, dry_run=False)
                     self._display_clean_result(result)
@@ -1119,12 +1126,10 @@ class InteractiveInterface:
                 # 验证输出路径
                 output_path_obj = Path(output_path)
                 if not output_path_obj.exists():
-                    create_parent = (
-                        input(f"路径 {output_path} 不存在，是否创建？(y/N): ")
-                        .strip()
-                        .lower()
+                    create_parent = self._get_yes_no_input(
+                        f"路径 {output_path} 不存在，是否创建？", default=False
                     )
-                    if create_parent in ["y", "yes", "是"]:
+                    if create_parent:
                         try:
                             output_path_obj.mkdir(parents=True, exist_ok=True)
                             print(f"✓ 已创建输出路径: {output_path}")
@@ -1193,8 +1198,8 @@ class InteractiveInterface:
             else:
                 print("图片前缀: 自动生成")
 
-            confirm = input("\n确认开始合并？(y/N): ").strip().lower()
-            if confirm not in ["y", "yes", "是"]:
+            confirm = self._get_yes_no_input("\n确认开始合并？", default=False)
+            if not confirm:
                 print("\n操作已取消")
                 self._pause()
                 return
@@ -1296,10 +1301,12 @@ class InteractiveInterface:
                 print()
 
             # 询问是否调整数据集顺序
-            adjust_order = input("是否需要调整数据集处理顺序？(y/N): ").strip().lower()
+            adjust_order = self._get_yes_no_input(
+                "是否需要调整数据集处理顺序？", default=False
+            )
             dataset_order = None
 
-            if adjust_order in ["y", "yes", "是"]:
+            if adjust_order:
                 print("\n当前数据集顺序:")
                 for i, path in enumerate(dataset_paths):
                     print(f"  {i}: {Path(path).name}")
@@ -1336,12 +1343,10 @@ class InteractiveInterface:
                 # 验证输出路径
                 output_path_obj = Path(output_path)
                 if not output_path_obj.exists():
-                    create_parent = (
-                        input(f"路径 {output_path} 不存在，是否创建？(y/N): ")
-                        .strip()
-                        .lower()
+                    create_parent = self._get_yes_no_input(
+                        f"路径 {output_path} 不存在，是否创建？", default=False
                     )
-                    if create_parent in ["y", "yes", "是"]:
+                    if create_parent:
                         try:
                             output_path_obj.mkdir(parents=True, exist_ok=True)
                             print(f"✓ 已创建输出路径: {output_path}")
@@ -1421,8 +1426,8 @@ class InteractiveInterface:
             else:
                 print("处理顺序: 默认")
 
-            confirm = input("\n确认开始合并？(y/N): ").strip().lower()
-            if confirm not in ["y", "yes", "是"]:
+            confirm = self._get_yes_no_input("\n确认开始合并？", default=False)
+            if not confirm:
                 print("\n操作已取消")
                 self._pause()
                 return
@@ -2150,7 +2155,9 @@ class InteractiveInterface:
                 "请输入源目录: ", must_exist=True, must_be_dir=True
             )
             output_dir = self._get_input("输出目录 (默认为源目录): ")
-            copy_files = self._get_yes_no_input("是否复制文件而不是移动? (y/n): ")
+            copy_files = self._get_yes_no_input(
+                "是否复制文件而不是移动?", default=False
+            )
 
             processor = self._get_processor("file")
             workflow = FileWorkflow(processor)
@@ -2183,7 +2190,7 @@ class InteractiveInterface:
 
             recursive = False
             if Path(source_path).is_dir():
-                recursive = self._get_yes_no_input("是否递归复制? (y/n): ")
+                recursive = self._get_yes_no_input("是否递归复制?", default=False)
 
             processor = self._get_processor("file")
             workflow = FileWorkflow(processor)
@@ -2212,7 +2219,7 @@ class InteractiveInterface:
 
             recursive = False
             if Path(source_path).is_dir():
-                recursive = self._get_yes_no_input("是否递归移动? (y/n): ")
+                recursive = self._get_yes_no_input("是否递归移动?", default=False)
 
             processor = self._get_processor("file")
             workflow = FileWorkflow(processor)
@@ -2251,7 +2258,7 @@ class InteractiveInterface:
                 self._pause()
                 return
 
-            overwrite = self._get_yes_no_input("目标存在同名文件时覆盖? (y/n): ")
+            overwrite = self._get_yes_no_input("目标存在同名文件时覆盖?", default=False)
 
             processor = self._get_processor("file")
             workflow = FileWorkflow(processor)
@@ -2309,9 +2316,7 @@ class InteractiveInterface:
                 allow_space_empty=True,
             )
 
-            shuffle_order = self._get_yes_no_input(
-                "是否打乱文件顺序? (默认: 否) (y/n): ", default=False
-            )
+            shuffle_order = self._get_yes_no_input("是否打乱文件顺序?", default=False)
 
             if prefix:
                 print(f"\n重命名前缀: {prefix}")
@@ -2320,7 +2325,7 @@ class InteractiveInterface:
             print("重命名模式: 1, 2, 3...（不补零）")
             print(f"打乱顺序: {'是' if shuffle_order else '否'}")
 
-            if not self._get_yes_no_input("\n确认开始同步重命名? (y/n): "):
+            if not self._get_yes_no_input("\n确认开始同步重命名?", default=False):
                 print("操作已取消")
                 return
 
@@ -2371,9 +2376,7 @@ class InteractiveInterface:
                 digits = 5
 
             # 是否打乱顺序
-            shuffle_order = self._get_yes_no_input(
-                "是否打乱文件顺序? (默认: 否) (y/n): ", default=False
-            )
+            shuffle_order = self._get_yes_no_input("是否打乱文件顺序?", default=False)
 
             # 检测目录中的文件后缀
             source_path = Path(source_dir)
@@ -2423,7 +2426,7 @@ class InteractiveInterface:
             print(f"打乱顺序: {'是' if shuffle_order else '否'}")
 
             # 确认操作
-            if not self._get_yes_no_input("\n确认使用此重命名模式? (y/n): "):
+            if not self._get_yes_no_input("\n确认使用此重命名模式?", default=False):
                 print("操作已取消")
                 return
 
@@ -2495,16 +2498,14 @@ class InteractiveInterface:
                 digits = 5
 
             # 是否打乱顺序
-            shuffle_order = self._get_yes_no_input(
-                "是否打乱文件顺序? (默认: 否) (y/n): ", default=False
-            )
+            shuffle_order = self._get_yes_no_input("是否打乱文件顺序?", default=False)
 
             print(f"\n重命名前缀: {prefix}")
             print(f"数字位数: {digits}")
             print(f"打乱顺序: {'是' if shuffle_order else '否'}")
 
             # 确认操作
-            if not self._get_yes_no_input("\n确认开始同步重命名? (y/n): "):
+            if not self._get_yes_no_input("\n确认开始同步重命名?", default=False):
                 print("操作已取消")
                 return
 
@@ -2567,7 +2568,8 @@ class InteractiveInterface:
                 print(f"  ... 还有 {total_files - 10} 个文件")
 
             if not self._get_yes_no_input(
-                f"\n警告: 此操作将永久删除 {total_files} 个JSON文件，是否继续? (y/n): "
+                f"\n警告: 此操作将永久删除 {total_files} 个JSON文件，是否继续?",
+                default=False,
             ):
                 print("操作已取消")
                 return
@@ -3289,7 +3291,7 @@ image:
         try:
             print("\n=== 重置为默认配置 ===")
 
-            if self._get_yes_no_input("确认重置为默认配置? (y/n): "):
+            if self._get_yes_no_input("确认重置为默认配置?", default=False):
                 self.config_manager.reset()
                 print("\n配置已重置为默认值")
             else:
@@ -3540,22 +3542,19 @@ image:
                 updates["image_processing"]["webp_quality"] = webp_quality
 
             auto_orient = self._get_yes_no_input(
-                f"自动旋转 [{image_config.get('auto_orient', True)}]: "
+                "自动旋转", default=bool(image_config.get("auto_orient", True))
             )
-            if auto_orient is not None:
-                updates["image_processing"]["auto_orient"] = auto_orient
+            updates["image_processing"]["auto_orient"] = auto_orient
 
             strip_metadata = self._get_yes_no_input(
-                f"移除元数据 [{image_config.get('strip_metadata', False)}]: "
+                "移除元数据", default=bool(image_config.get("strip_metadata", False))
             )
-            if strip_metadata is not None:
-                updates["image_processing"]["strip_metadata"] = strip_metadata
+            updates["image_processing"]["strip_metadata"] = strip_metadata
 
             parallel_processing = self._get_yes_no_input(
-                f"并行处理 [{image_config.get('parallel_processing', True)}]: "
+                "并行处理", default=bool(image_config.get("parallel_processing", True))
             )
-            if parallel_processing is not None:
-                updates["image_processing"]["parallel_processing"] = parallel_processing
+            updates["image_processing"]["parallel_processing"] = parallel_processing
 
             chunk_size = self._get_int_input(
                 f"分块大小 [{image_config.get('chunk_size', 50)}]: ",
@@ -3606,10 +3605,9 @@ image:
                 updates["yolo"]["classes_file"] = classes_file
 
             validate_on_load = self._get_yes_no_input(
-                f"加载时验证 [{yolo_config.get('validate_on_load', True)}]: "
+                "加载时验证", default=bool(yolo_config.get("validate_on_load", True))
             )
-            if validate_on_load is not None:
-                updates["yolo"]["validate_on_load"] = validate_on_load
+            updates["yolo"]["validate_on_load"] = validate_on_load
 
             if updates["yolo"]:
                 self.config_manager.update(updates)
@@ -3649,10 +3647,9 @@ image:
                 updates["ui"]["theme"] = theme
 
             show_progress = self._get_yes_no_input(
-                f"显示进度 [{ui_config.get('show_progress', True)}]: "
+                "显示进度", default=bool(ui_config.get("show_progress", True))
             )
-            if show_progress is not None:
-                updates["ui"]["show_progress"] = show_progress
+            updates["ui"]["show_progress"] = show_progress
 
             if updates["ui"]:
                 self.config_manager.update(updates)
@@ -3708,29 +3705,28 @@ image:
             except EOFError:
                 raise UserInterruptError("输入结束")
 
-    def _get_yes_no_input(self, prompt: str, default: Optional[bool] = None) -> bool:
+    def _get_yes_no_input(self, prompt: str, default: bool) -> bool:
         """获取是/否输入"""
-        # 如果有默认值，在提示中显示
-        if default is not None:
-            default_text = "y" if default else "n"
-            display_prompt = f"{prompt} (默认: {default_text}): "
-        else:
-            display_prompt = prompt
+        if any(marker in prompt for marker in LEGACY_PROMPT_MARKERS):
+            raise ValueError(
+                "yes/no prompt must be plain text; default markers belong to _get_yes_no_input"
+            )
+
+        default_text = "y" if default else "n"
+        display_prompt = f"{prompt} (y/n, 默认: {default_text}): "
 
         while True:
             try:
                 response = self._get_input(display_prompt).strip().lower()
-
-                # 如果输入为空且有默认值，使用默认值
-                if not response and default is not None:
+                if not response:
                     return default
 
-                if response in ["y", "yes", "是", "1", "true"]:
+                if response in YES_VALUES:
                     return True
-                elif response in ["n", "no", "否", "0", "false"]:
+                if response in NO_VALUES:
                     return False
-                else:
-                    print("请输入 y 或 n")
+
+                print("请输入 y 或 n")
 
             except KeyboardInterrupt:
                 raise UserInterruptError("用户中断操作")

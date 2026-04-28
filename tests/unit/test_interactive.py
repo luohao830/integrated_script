@@ -1258,67 +1258,465 @@ def test_yolo_merge_different_datasets_uses_yolo_workflow_adapter(
     assert workflow.merge_calls[0][1] == "."
 
 
-def test_file_delete_json_recursive_uses_file_workflow_adapter(
-    interface_with_non_exe, monkeypatch, tmp_path
+def test_yes_no_input_returns_true_on_empty_when_default_true(
+    interface_with_non_exe, monkeypatch
 ) -> None:
-    class _WorkflowForDeleteJson:
-        instances: List["_WorkflowForDeleteJson"] = []
+    monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda _prompt: "")
+
+    result = interface_with_non_exe._get_yes_no_input("是否继续?", default=True)
+
+    assert result is True
+
+
+def test_yes_no_input_returns_false_on_empty_when_default_false(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda _prompt: "")
+
+    result = interface_with_non_exe._get_yes_no_input("是否继续?", default=False)
+
+    assert result is False
+
+
+@pytest.mark.parametrize("raw", ["y", "yes", "是", "1", "true"])
+def test_yes_no_input_accepts_true_values(
+    interface_with_non_exe, monkeypatch, raw
+) -> None:
+    monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda _prompt: raw)
+
+    result = interface_with_non_exe._get_yes_no_input("是否继续?", default=False)
+
+    assert result is True
+
+
+@pytest.mark.parametrize("raw", ["n", "no", "否", "0", "false"])
+def test_yes_no_input_accepts_false_values(
+    interface_with_non_exe, monkeypatch, raw
+) -> None:
+    monkeypatch.setattr(interface_with_non_exe, "_get_input", lambda _prompt: raw)
+
+    result = interface_with_non_exe._get_yes_no_input("是否继续?", default=True)
+
+    assert result is False
+
+
+def test_yes_no_input_retries_on_invalid_input(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    responses = iter(["???", "y"])
+    printed: List[str] = []
+
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_input", lambda _prompt: next(responses)
+    )
+    monkeypatch.setattr(
+        "builtins.print",
+        lambda *args, **_kwargs: printed.append(" ".join(str(arg) for arg in args)),
+    )
+
+    result = interface_with_non_exe._get_yes_no_input("是否继续?", default=False)
+
+    assert result is True
+    assert any("请输入 y 或 n" in line for line in printed)
+
+
+def test_yes_no_input_display_prompt_contains_default_marker(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    prompts: List[str] = []
+
+    def _capture_prompt(prompt: str) -> str:
+        prompts.append(prompt)
+        return ""
+
+    monkeypatch.setattr(interface_with_non_exe, "_get_input", _capture_prompt)
+
+    interface_with_non_exe._get_yes_no_input("是否继续?", default=True)
+    interface_with_non_exe._get_yes_no_input("是否继续?", default=False)
+
+    assert "(y/n, 默认: y): " in prompts[0]
+    assert "(y/n, 默认: n): " in prompts[1]
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "是否继续? (Y/n)",
+        "是否继续? (y/N)",
+        "是否继续? (y/n)",
+        "是否继续? 默认: y",
+    ],
+)
+def test_yes_no_input_rejects_legacy_prompt_markers(
+    interface_with_non_exe, prompt
+) -> None:
+    with pytest.raises(ValueError):
+        interface_with_non_exe._get_yes_no_input(prompt, default=True)
+
+
+def test_yolo_clean_unmatched_uses_yes_no_helper_flow(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    class _WorkflowForCleanFlow:
+        instances: List["_WorkflowForCleanFlow"] = []
 
         def __init__(self, processor: Any) -> None:
             self.processor = processor
             self.calls: List[Tuple[str, bool]] = []
-            _WorkflowForDeleteJson.instances.append(self)
+            _WorkflowForCleanFlow.instances.append(self)
 
-        def delete_json_files_recursive(
-            self,
-            target_dir: str,
-            dry_run: bool = False,
-        ) -> Dict[str, Any]:
-            self.calls.append((target_dir, dry_run))
+        def clean_unmatched_files(self, dataset_path: str, dry_run: bool = False):
+            self.calls.append((dataset_path, dry_run))
             if dry_run:
                 return {
                     "success": True,
-                    "target_dir": target_dir,
-                    "dry_run": True,
-                    "json_files": [str(Path(target_dir) / "a.json")],
+                    "deleted_files": {
+                        "orphaned_images": ["a.jpg"],
+                        "orphaned_labels": [],
+                        "invalid_labels": [],
+                        "empty_labels": [],
+                    },
                     "statistics": {
-                        "total_files": 1,
-                        "deleted_count": 0,
-                        "failed_count": 0,
+                        "total_deleted": 0,
+                        "deleted_images": 0,
+                        "deleted_labels": 0,
                     },
                 }
             return {
                 "success": True,
-                "target_dir": target_dir,
-                "dry_run": False,
-                "json_files": [str(Path(target_dir) / "a.json")],
-                "failed_files": [],
-                "statistics": {"total_files": 1, "deleted_count": 1, "failed_count": 0},
+                "deleted_files": {
+                    "orphaned_images": [],
+                    "orphaned_labels": [],
+                    "invalid_labels": [],
+                    "empty_labels": [],
+                },
+                "statistics": {
+                    "total_deleted": 1,
+                    "deleted_images": 1,
+                    "deleted_labels": 0,
+                },
             }
 
-    target_dir = tmp_path / "json-dir"
-    target_dir.mkdir()
-    marker_processor = object()
+    yes_no_calls: List[Tuple[str, bool]] = []
+    yes_no_results = iter([True, False])
+
+    def _fake_yes_no(prompt: str, default: bool) -> bool:
+        yes_no_calls.append((prompt, default))
+        return next(yes_no_results)
 
     monkeypatch.setattr(
-        "integrated_script.ui.interactive.FileWorkflow", _WorkflowForDeleteJson
-    )
-    monkeypatch.setattr(
-        interface_with_non_exe, "_get_processor", lambda _name: marker_processor
+        "integrated_script.ui.interactive.YoloWorkflow", _WorkflowForCleanFlow
     )
     monkeypatch.setattr(
         interface_with_non_exe,
         "_get_path_input",
-        lambda _prompt, must_exist=True, must_be_dir=True: str(target_dir),
+        lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
     )
     monkeypatch.setattr(
-        interface_with_non_exe, "_get_yes_no_input", lambda *_a, **_k: True
+        interface_with_non_exe, "_get_processor", lambda _name: object()
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", _fake_yes_no)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_display_clean_result", lambda _r: None
     )
     monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
 
-    interface_with_non_exe._file_delete_json_recursive()
+    interface_with_non_exe._yolo_clean_unmatched()
 
-    assert len(_WorkflowForDeleteJson.instances) == 1
-    workflow = _WorkflowForDeleteJson.instances[0]
-    assert workflow.processor is marker_processor
-    assert workflow.calls == [(str(target_dir), True), (str(target_dir), False)]
+    assert len(_WorkflowForCleanFlow.instances) == 1
+    workflow = _WorkflowForCleanFlow.instances[0]
+    assert workflow.calls == [("/tmp/yolo-dataset", True)]
+    assert yes_no_calls == [
+        ("\n是否先进行试运行（查看将要删除的文件但不实际删除）？", False),
+        ("\n确认要删除这些文件吗？", False),
+    ]
+
+
+def test_yolo_detection_statistics_uses_yes_no_helper_with_expected_defaults(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    class _WorkflowForDetectionFlow:
+        instances: List["_WorkflowForDetectionFlow"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.calls: List[Tuple[str, bool]] = []
+            _WorkflowForDetectionFlow.instances.append(self)
+
+        def get_dataset_statistics(self, dataset_path: str):
+            return {
+                "success": True,
+                "statistics": {
+                    "is_valid": False,
+                    "orphaned_images": 1,
+                    "orphaned_labels": 0,
+                },
+            }
+
+        def clean_unmatched_files(self, dataset_path: str, dry_run: bool = False):
+            self.calls.append((dataset_path, dry_run))
+            return {
+                "success": True,
+                "deleted_files": {
+                    "orphaned_images": ["a.jpg"],
+                    "orphaned_labels": [],
+                    "invalid_labels": [],
+                    "empty_labels": [],
+                },
+                "statistics": {
+                    "total_deleted": 1,
+                    "deleted_images": 1,
+                    "deleted_labels": 0,
+                },
+            }
+
+    yes_no_calls: List[Tuple[str, bool]] = []
+    yes_no_results = iter([True, True])
+
+    def _fake_yes_no(prompt: str, default: bool) -> bool:
+        yes_no_calls.append((prompt, default))
+        return next(yes_no_results)
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow", _WorkflowForDetectionFlow
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: object()
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", _fake_yes_no)
+    monkeypatch.setattr(interface_with_non_exe, "_display_result", lambda _r: None)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_display_clean_result", lambda _r: None
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_display_files_to_delete", lambda _r: None
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+
+    interface_with_non_exe._yolo_detection_statistics()
+
+    assert yes_no_calls == [
+        ("是否立即进行自动清理？", True),
+        ("\n确认删除这些文件？", True),
+    ]
+
+
+def test_yolo_segmentation_statistics_uses_yes_no_helper_with_expected_defaults(
+    interface_with_non_exe, monkeypatch
+) -> None:
+    class _WorkflowForSegFlow:
+        instances: List["_WorkflowForSegFlow"] = []
+
+        def __init__(self, processor: Any) -> None:
+            self.processor = processor
+            self.calls: List[Tuple[str, bool]] = []
+            _WorkflowForSegFlow.instances.append(self)
+
+        def get_dataset_statistics(self, dataset_path: str):
+            return {
+                "success": True,
+                "statistics": {
+                    "is_valid": False,
+                    "orphaned_images": 1,
+                    "orphaned_labels": 0,
+                },
+            }
+
+        def clean_unmatched_files(self, dataset_path: str, dry_run: bool = False):
+            self.calls.append((dataset_path, dry_run))
+            return {
+                "success": True,
+                "deleted_files": {
+                    "orphaned_images": ["a.jpg"],
+                    "orphaned_labels": [],
+                    "invalid_labels": [],
+                    "empty_labels": [],
+                },
+                "statistics": {
+                    "total_deleted": 1,
+                    "deleted_images": 1,
+                    "deleted_labels": 0,
+                },
+            }
+
+    yes_no_calls: List[Tuple[str, bool]] = []
+    yes_no_results = iter([True, True, True])
+
+    def _fake_yes_no(prompt: str, default: bool) -> bool:
+        yes_no_calls.append((prompt, default))
+        return next(yes_no_results)
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow", _WorkflowForSegFlow
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_get_path_input",
+        lambda _prompt, must_exist=True: "/tmp/yolo-dataset",
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: object()
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", _fake_yes_no)
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_validate_segmentation_format",
+        lambda _path: [(Path("bad.txt"), "格式错误")],
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe,
+        "_move_invalid_segmentation_files",
+        lambda _path, _files: None,
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_display_result", lambda _r: None)
+    monkeypatch.setattr(
+        interface_with_non_exe, "_display_clean_result", lambda _r: None
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_display_files_to_delete", lambda _r: None
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+
+    interface_with_non_exe._yolo_segmentation_statistics()
+
+    assert yes_no_calls == [
+        ("\n是否将无效文件移动到上级目录？", True),
+        ("是否立即进行自动清理？", True),
+        ("\n确认删除这些文件？", True),
+    ]
+
+
+def test_yolo_merge_datasets_uses_yes_no_helper_with_expected_defaults(
+    interface_with_non_exe, monkeypatch, tmp_path
+) -> None:
+    class _WorkflowForMergeConfirm:
+        def __init__(self, _processor: Any) -> None:
+            pass
+
+        def validate_classes_consistency(self, _dataset_paths: List[Path]):
+            return {"consistent": True, "classes": ["cat", "dog"]}
+
+        def generate_output_name(self, classes: List[str], dataset_paths: List[Path]):
+            return "merged-cat-dog"
+
+        def merge_datasets(
+            self,
+            dataset_paths: List[Path],
+            output_path: str,
+            output_name: Optional[str] = None,
+            image_prefix: Optional[str] = None,
+        ):
+            del dataset_paths, output_path, output_name, image_prefix
+            return {
+                "success": True,
+                "output_path": "/tmp/merged",
+                "total_images": 2,
+                "total_labels": 2,
+                "classes": ["cat", "dog"],
+                "merged_datasets": 2,
+            }
+
+    d1 = tmp_path / "d1"
+    d2 = tmp_path / "d2"
+    d1.mkdir()
+    d2.mkdir()
+
+    yes_no_calls: List[Tuple[str, bool]] = []
+    yes_no_results = iter([False])
+
+    def _fake_yes_no(prompt: str, default: bool) -> bool:
+        yes_no_calls.append((prompt, default))
+        return next(yes_no_results)
+
+    inputs = iter([str(d1), str(d2), "", "", "", "", ""])
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow", _WorkflowForMergeConfirm
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: object()
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", _fake_yes_no)
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(inputs))
+
+    interface_with_non_exe._yolo_merge_datasets()
+
+    assert yes_no_calls[-1] == ("\n确认开始合并？", False)
+
+
+def test_yolo_merge_different_datasets_uses_yes_no_helper_with_expected_defaults(
+    interface_with_non_exe, monkeypatch, tmp_path
+) -> None:
+    class _WorkflowForDiffMergeConfirm:
+        def __init__(self, _processor: Any) -> None:
+            pass
+
+        def collect_all_classes_info(self, dataset_paths: List[Path]):
+            return [
+                {"dataset_path": dataset_paths[0], "classes": ["cat"]},
+                {"dataset_path": dataset_paths[1], "classes": ["dog"]},
+            ]
+
+        def create_unified_class_mapping(self, all_classes_info: List[Dict[str, Any]]):
+            del all_classes_info
+            return ["cat", "dog"], [{0: 0}, {0: 1}]
+
+        def generate_different_output_name(
+            self, unified_classes: List[str], dataset_paths: List[Path]
+        ):
+            del unified_classes, dataset_paths
+            return "merged-diff"
+
+        def merge_different_type_datasets(
+            self,
+            dataset_paths: List[str],
+            output_path: str,
+            output_name: Optional[str] = None,
+            image_prefix: Optional[str] = None,
+            dataset_order: Optional[List[int]] = None,
+        ):
+            del dataset_paths, output_path, output_name, image_prefix, dataset_order
+            return {
+                "success": True,
+                "output_path": "/tmp/merged-diff",
+                "total_images": 2,
+                "total_labels": 2,
+                "unified_classes": ["cat", "dog"],
+                "merged_datasets": 2,
+                "statistics": [],
+            }
+
+    d1 = tmp_path / "d1"
+    d2 = tmp_path / "d2"
+    d1.mkdir()
+    d2.mkdir()
+
+    yes_no_calls: List[Tuple[str, bool]] = []
+    yes_no_results = iter([False, False])
+
+    def _fake_yes_no(prompt: str, default: bool) -> bool:
+        yes_no_calls.append((prompt, default))
+        return next(yes_no_results)
+
+    inputs = iter([str(d1), str(d2), "", "", "", "", ""])
+
+    monkeypatch.setattr(
+        "integrated_script.ui.interactive.YoloWorkflow", _WorkflowForDiffMergeConfirm
+    )
+    monkeypatch.setattr(
+        interface_with_non_exe, "_get_processor", lambda _name: object()
+    )
+    monkeypatch.setattr(interface_with_non_exe, "_get_yes_no_input", _fake_yes_no)
+    monkeypatch.setattr(interface_with_non_exe, "_pause", lambda: None)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(inputs))
+
+    interface_with_non_exe._yolo_merge_different_datasets()
+
+    assert yes_no_calls[0] == ("是否需要调整数据集处理顺序？", False)
+    assert yes_no_calls[-1] == ("\n确认开始合并？", False)
